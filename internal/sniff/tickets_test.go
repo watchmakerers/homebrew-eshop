@@ -3,6 +3,7 @@ package sniff
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/xml"
 	"net/http/httptest"
 	"os"
@@ -79,3 +80,64 @@ func TestPurchaseAndTickets(t *testing.T) {
 }
 
 func uintStr(v uint64) string { return strconv.FormatUint(v, 10) }
+
+// The eShop app's own path: prepurchase_info, ninja !purchase, then NIM fetching that ticket.
+func TestNinjaPurchaseFlow(t *testing.T) {
+	const tid = 0x000400000BA1A700
+	path := filepath.Join(t.TempDir(), "game.cia")
+	os.WriteFile(path, ciatest.Build(ciatest.Spec{TitleID: tid, Contents: []ciatest.Content{{ID: 0, Data: make([]byte, 64)}}}), 0o644)
+	titles := []catalog.Title{{Name: "Game", TitleID: tid, CIA: &catalog.CIASource{Path: path}}}
+	st := &Stubs{Shop: &Shop{Titles: func() []catalog.Title { return titles }}}
+	sid := strconv.Itoa(ShopID(titles[0]))
+	get := func(method, url string, body []byte) []byte {
+		t.Helper()
+		req := httptest.NewRequest(method, url, nil)
+		r := st.Respond(req.Host, req, body)
+		if r == nil {
+			t.Fatalf("no reply to %s", url)
+		}
+		return r.body
+	}
+
+	var pre struct {
+		P struct {
+			Content struct {
+				Pay struct {
+					Price struct {
+						PreOrder *bool `json:"pre_order"`
+						Regular  struct {
+							ID  int    `json:"id"`
+							Raw string `json:"raw_value"`
+						} `json:"regular_price"`
+					} `json:"price"`
+					Total struct {
+						Raw string `json:"raw_value"`
+					} `json:"total_amount"`
+				} `json:"payment_amount"`
+			} `json:"purchasing_content"`
+		} `json:"prepurchase_info"`
+	}
+	b := get("GET", "https://ninja.ctr.shop.pretendo.cc/ninja/ws/JP/title/"+sid+"/prepurchase_info", nil)
+	if err := json.Unmarshal(b, &pre); err != nil || pre.P.Content.Pay.Price.PreOrder == nil || pre.P.Content.Pay.Price.Regular.Raw != "0" || pre.P.Content.Pay.Total.Raw != "0" {
+		t.Fatalf("prepurchase_info: %v %s", err, b)
+	}
+
+	var buy struct {
+		R struct {
+			TicketID uint64 `json:"ticket_id"`
+			Balance  struct {
+				Raw string `json:"raw_value"`
+			} `json:"post_balance"`
+		} `json:"transaction_result"`
+	}
+	b = get("POST", "https://ninja.ctr.shop.pretendo.cc/ninja/ws/JP/title/"+sid+"/!purchase", nil)
+	if err := json.Unmarshal(b, &buy); err != nil || buy.R.TicketID == 0 || buy.R.Balance.Raw != "0" {
+		t.Fatalf("!purchase: %v %s", err, b)
+	}
+
+	b = get("POST", "https://ecs.c.shop.pretendo.cc/ecs/services/ECommerceSOAP",
+		ecsRequest("AccountGetETickets", `<ecs:TicketId>`+strconv.FormatUint(buy.R.TicketID, 10)+`</ecs:TicketId>`))
+	if !strings.Contains(string(b), "<ETickets>") {
+		t.Fatalf("ticket not served after !purchase: %s", b)
+	}
+}

@@ -74,6 +74,10 @@ func (s *Stubs) Respond(host string, r *http.Request, body []byte) *stubReply {
 		m := ninjaPrePurchase.FindStringSubmatch(r.URL.Path)
 		n, _ := strconv.Atoi(m[2])
 		return s.Shop.prepurchaseInfo(m[1], n)
+	case strings.HasPrefix(host, "ninja.") && s.Shop != nil && ninjaPurchase.MatchString(r.URL.Path):
+		m := ninjaPurchase.FindStringSubmatch(r.URL.Path)
+		n, _ := strconv.Atoi(m[2])
+		return s.Shop.ninjaPurchase(m[1], n)
 	case strings.HasPrefix(host, "ninja.") && strings.HasPrefix(r.URL.Path, "/ninja/ws/my/"):
 		return s.ninjaMy(strings.TrimPrefix(r.URL.Path, "/ninja/ws/my/"), body)
 	case strings.HasPrefix(host, "nus.") && r.URL.Path == "/nus/services/NetUpdateSOAP":

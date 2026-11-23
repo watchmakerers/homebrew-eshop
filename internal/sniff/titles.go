@@ -20,6 +20,7 @@ var (
 	ninjaECInfoPath  = regexp.MustCompile(`^/ninja/ws/([A-Za-z]{2})/title/([0-9]+)/ec_info$`)
 	ninjaPricesPath  = regexp.MustCompile(`^/ninja/ws/([A-Za-z]{2})/titles/online_prices$`)
 	ninjaPrePurchase = regexp.MustCompile(`^/ninja/ws/([A-Za-z]{2})/title/([0-9]+)/prepurchase_info$`)
+	ninjaPurchase    = regexp.MustCompile(`^/ninja/ws/([A-Za-z]{2})/title/([0-9]+)/!purchase$`)
 	sizeRe           = regexp.MustCompile(`^\s*([0-9.]+)\s*([KMG]i?B|B)?`)
 )
 
@@ -188,35 +189,46 @@ func (s *Shop) onlinePrices(country string, q url.Values) *stubReply {
 	return jsonReply(fmt.Sprintf("ninja online_prices (%d)", len(list)), map[string]any{"online_prices": map[string]any{"online_price": list}})
 }
 
-// prepurchaseInfo is the eShop app's check before "buying" (downloading) a title: what it costs and the balance
-// before and after. UNVERIFIED: no reply body has been published and the app's parser hasn't been traced; this
-// layout follows the order of the app's JSON key-path table (TIGER 0x3b3984: prepurchase_info -> purchasing_content,
-// tax_excluded, current_balance.raw_value; payment_amount -> price.regular_price{amount,currency,raw_value,id},
-// total_amount.raw_value, tax_amount.raw_value; pre_order). Everything is free.
+// prepurchaseInfo is the eShop app's check before "buying" (downloading) a title. Layout from its parser
+// (TIGER 0x331ec0), which walks key paths from the table at 0x3b3954:
+//
+//	prepurchase_info.current_balance.raw_value                  optional
+//	prepurchase_info.purchasing_content                         required
+//	  payment_amount.price.pre_order                            bool
+//	  payment_amount.tax_amount.raw_value / total_amount.raw_value
+//	  payment_amount.price.regular_price.{id,raw_value}
+//	  payment_amount.price.{coupon_price,discount_price}.raw_value, conditional_prices.conditional_price  optional
+//	prepurchase_info.tax_excluded                               bool
+//
+// Everything is free.
 func (s *Shop) prepurchaseInfo(country string, id int) *stubReply {
 	t := s.find(id)
 	if t == nil {
 		return nil
 	}
+	money := moneyIn(country)
+	regular := money("Free")
+	regular["id"] = 1
+	return jsonReply(fmt.Sprintf("ninja prepurchase_info %d (%s)", id, t.Name), map[string]any{"prepurchase_info": map[string]any{
+		"current_balance": money("0"),
+		"tax_excluded":    false,
+		"purchasing_content": map[string]any{
+			"payment_amount": map[string]any{
+				"price":        map[string]any{"pre_order": false, "regular_price": regular},
+				"tax_amount":   money("0"),
+				"total_amount": money("Free"),
+			},
+		},
+	}})
+}
+
+// moneyIn makes samurai/ninja amounts ({amount, currency, raw_value}) in a country's currency, all zero.
+func moneyIn(country string) func(amount string) map[string]any {
 	currency := countryCurrencies[strings.ToUpper(country)]
 	if currency == "" {
 		currency = "USD"
 	}
-	money := func(amount string) map[string]any {
+	return func(amount string) map[string]any {
 		return map[string]any{"amount": amount, "currency": currency, "raw_value": "0"}
 	}
-	regular := money("Free")
-	regular["id"] = 1
-	return jsonReply(fmt.Sprintf("ninja prepurchase_info %d (%s) [guessed layout]", id, t.Name), map[string]any{"prepurchase_info": map[string]any{
-		"purchasing_content": map[string]any{"type": "title", "title": map[string]any{"id": id, "name": t.Name}},
-		"tax_excluded":       false,
-		"pre_order":          false,
-		"current_balance":    money("0"),
-		"post_balance":       money("0"),
-		"payment_amount": map[string]any{
-			"price":        map[string]any{"regular_price": regular},
-			"total_amount": money("Free"),
-			"tax_amount":   money("0"),
-		},
-	}})
 }

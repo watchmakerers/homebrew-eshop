@@ -11,7 +11,11 @@ import (
 	"homebrew-eshop/internal/cia"
 )
 
-// Buying a title, as NIM does it (ECS, traced in NIM):
+// Buying a title. The eShop app POSTs ninja title/<id>/!purchase; the reply's transaction_result (parser TIGER
+// 0x331754: post_balance.raw_value, ticket_id (number, required), transaction_id, integrated_account,
+// privilege_infos optional) names the ticket, which NIM then fetches with ECS AccountGetETickets (below).
+//
+// NIM's own ECS purchase (traced in NIM):
 //
 //  1. AccountPurchaseTitle(TitleId, ItemId, Price...). The reply (purchaseItem handler, 0x132180) may carry
 //     <Balance><Amount/><Currency/></Balance> and <Transactions>..., both optional (parser 0x125fc0), then
@@ -73,12 +77,7 @@ func (s *Shop) purchaseTitle(a soapAction) *stubReply {
 		if err != nil {
 			return nil
 		}
-		s.mu.Lock()
-		if s.tickets == nil {
-			s.tickets = map[uint64]*issuedTicket{}
-		}
-		s.tickets[id] = &issuedTicket{ticket: ticket, certs: info.certs}
-		s.mu.Unlock()
+		s.issue(id, ticket, info.certs)
 		pairs.WriteString("<TitleIdTicketId>" + el("TitleId", fmt.Sprintf("%016X", tid)) + el("TicketId", strconv.FormatUint(id, 10)) + "</TitleIdTicketId>")
 		names = append(names, t.Name)
 	}
@@ -129,4 +128,37 @@ func (s *Shop) getETickets(a soapAction) *stubReply {
 	r := soapReply(a, el("ServiceStandbyMode", "false")+tickets.String()+certs.String())
 	r.name = fmt.Sprintf("ecs AccountGetETickets (%d)", len(a.TicketIDs))
 	return r
+}
+
+// ninjaPurchase answers the eShop's ninja title/<id>/!purchase: the title is free, here is its ticket's ID.
+func (s *Shop) ninjaPurchase(country string, id int) *stubReply {
+	t := s.find(id)
+	if t == nil {
+		return nil
+	}
+	info, err := s.prepareFor(t, pageWait)
+	if err != nil {
+		return nil
+	}
+	ticketID, ticket, err := ticketData(info)
+	if err != nil {
+		return nil
+	}
+	s.issue(ticketID, ticket, info.certs)
+	money := moneyIn(country)
+	return jsonReply(fmt.Sprintf("ninja !purchase %d (%s): ticket %d", id, t.Name, ticketID), map[string]any{"transaction_result": map[string]any{
+		"transaction_id":     ticketID & 0xFFFFFFFF,
+		"ticket_id":          ticketID,
+		"integrated_account": false,
+		"post_balance":       money("0"),
+	}})
+}
+
+func (s *Shop) issue(id uint64, ticket, certs []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tickets == nil {
+		s.tickets = map[uint64]*issuedTicket{}
+	}
+	s.tickets[id] = &issuedTicket{ticket: ticket, certs: certs}
 }
