@@ -109,7 +109,7 @@ func (s *Shop) title(samuraiHost string, id int) *stubReply {
 	if info, err := s.prepareFor(t, pageWait); err == nil { // same ID ec_info reports
 		tid = info.titleID
 	}
-	return jsonReply(fmt.Sprintf("samurai title %d (%s)", id, t.Name), map[string]any{"title": map[string]any{
+	page := map[string]any{
 		"id":                    id,
 		"name":                  t.Name,
 		"formal_name":           t.Name,
@@ -135,7 +135,13 @@ func (s *Shop) title(samuraiHost string, id int) *stubReply {
 		"aoc_available":         false,
 		"in_app_purchase":       false,
 		"new":                   isNew(t),
-	}})
+	}
+	if a := s.backupArchive(t); a != nil {
+		if shots := archiveScreenshots(base, a); shots != nil {
+			page["screenshots"] = shots
+		}
+	}
+	return jsonReply(fmt.Sprintf("samurai title %d (%s)", id, t.Name), map[string]any{"title": page})
 }
 
 // ecInfo tells the eShop what it would download: title ID, version and size.

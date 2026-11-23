@@ -234,6 +234,9 @@ func queryInt(q map[string][]string, key string, def int) int {
 var imagePath = regexp.MustCompile(`^/(icon|banner|dir|dirbanner)/([0-9]+)\.jpg$`)
 
 func (s *Shop) image(path string) *stubReply {
+	if strings.HasPrefix(path, "/shot/") {
+		return s.archiveShot(path)
+	}
 	m := imagePath.FindStringSubmatch(path)
 	if m == nil {
 		return nil

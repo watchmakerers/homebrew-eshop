@@ -121,6 +121,14 @@ func (s *Shop) Preview() http.Handler {
 				Publisher   struct {
 					Name string `json:"name"`
 				} `json:"publisher"`
+				Screenshots struct {
+					Screenshot []struct {
+						Images []struct {
+							Type  string `json:"type"`
+							Value string `json:"value"`
+						} `json:"image_url"`
+					} `json:"screenshot"`
+				} `json:"screenshots"`
 			} `json:"title"`
 		}
 		if !decode(rep, &v) {
@@ -176,6 +184,8 @@ a{color:inherit;text-decoration:none}h1{font-size:20px;margin:4px 0 12px}
 .desc{white-space:pre-wrap;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 .badge{display:inline-block;padding:2px 8px;border-radius:6px;background:var(--line);font-size:12px;margin-right:6px}
 details{margin-top:18px}pre{overflow:auto;font-size:11.5px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:420px}
+.shots{display:grid;gap:12px}.shot{display:flex;flex-direction:column;align-items:center;gap:4px;background:#000;border-radius:10px;padding:8px}
+.shot img{display:block;max-width:100%;border-radius:4px}.shot .upper{width:400px}.shot .lower{width:320px}
 .crumb{font-size:13px;color:var(--muted);margin-bottom:8px;display:inline-block}
 </style></head><body><main>{{end}}
 {{define "foot"}}</main></body></html>{{end}}
@@ -210,6 +220,8 @@ details{margin-top:18px}pre{overflow:auto;font-size:11.5px;background:var(--card
 <p><span class="badge">{{.T.ProductCode}}</span>{{if .T.TitleID}}<span class="badge">{{.T.TitleID}}</span>{{end}}
 <span class="badge">{{if .T.Download}}downloadable{{else}}browse only{{end}}</span><span class="badge">price: {{.Status}}</span></p>
 <div class="desc">{{.T.Description}}</div>
+{{with .T.Screenshots.Screenshot}}<h1 style="font-size:16px;margin-top:16px">Screenshots</h1>
+<div class="shots">{{range .}}<div class="shot">{{range .Images}}<img src="{{.Value}}" alt="{{.Type}} screen" loading="lazy" class="{{.Type}}">{{end}}</div>{{end}}</div>{{end}}
 <p class="meta">{{.T.Disclaimer}}</p>
 <details><summary>title reply</summary><pre>{{.Raw}}</pre></details>
 <details><summary>online_prices reply</summary><pre>{{.RawPrice}}</pre></details>

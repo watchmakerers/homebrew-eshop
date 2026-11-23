@@ -40,11 +40,14 @@ func TestArchiveShop(t *testing.T) {
 		`<directory id="1094214" type="normal"><name>Nintendo Switch</name><icon_url>`+img+`eeee.jpg</icon_url></directory>`+
 		`</directories></eshop>`))
 	writeFile(t, filepath.Join(ws, "US", "title", "50010000000001"), []byte(`<eshop><title id="50010000000001">`+
-		`<product_code>CTR-N-AKRE</product_code><name>Kirby Test</name><description>Line one&lt;BR&gt;Line two</description></title></eshop>`))
+		`<product_code>CTR-N-AKRE</product_code><name>Kirby Test</name><description>Line one&lt;BR&gt;Line two</description>`+
+		`<screenshots><screenshot><image_url type="upper">`+img+`ffff.jpg</image_url><image_url type="lower">`+img+`9999.jpg</image_url></screenshot></screenshots></title></eshop>`))
 	images := filepath.Join(root, "kanzashi-ctr.cdn.nintendo.net", "i")
 	writeFile(t, filepath.Join(images, "aaaa.jpg"), []byte("ICON"))
 	writeFile(t, filepath.Join(images, "bbbb.jpg"), []byte("BANNER"))
 	writeFile(t, filepath.Join(images, "cccc.jpg"), []byte("TILE"))
+	writeFile(t, filepath.Join(images, "ffff.jpg"), []byte("TOP"))
+	writeFile(t, filepath.Join(images, "9999.jpg"), []byte("BOTTOM"))
 
 	x, err := archive.Load(root)
 	if err != nil {
@@ -81,6 +84,12 @@ func TestArchiveShop(t *testing.T) {
 	page := shop.title(host, 50010000000001)
 	if page == nil || !bytes.Contains(page.body, []byte(`Line one\nLine two`)) || !bytes.Contains(page.body, []byte(`"downloadable":false`)) {
 		t.Fatalf("archive title page: %s", page.body)
+	}
+	if !bytes.Contains(page.body, []byte(`"screenshots":{"screenshot":[{"image_url":[{"type":"upper","value":"https://img.ctr.shop.pretendo.cc/shot/50010000000001/0/upper.jpg"},{"type":"lower"`)) {
+		t.Errorf("screenshots missing from title page: %s", page.body)
+	}
+	if r := shop.image("/shot/50010000000001/0/lower.jpg"); r == nil || string(r.body) != "BOTTOM" {
+		t.Errorf("screenshot not served: %v", r)
 	}
 	if r := shop.image("/banner/50010000000001.jpg"); r == nil || string(r.body) != "BANNER" {
 		t.Errorf("archived banner not served as-is: %v", r)

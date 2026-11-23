@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/jpeg"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"homebrew-eshop/internal/archive"
@@ -214,6 +215,9 @@ func (s *Shop) archiveTitlePage(samuraiHost string, t *archive.Title) *stubReply
 	page["ticket_available"] = false
 	page["downloadable"] = false
 	page["movie_available"] = false
+	if shots := archiveScreenshots(imgBase(samuraiHost), t); shots != nil {
+		page["screenshots"] = shots
+	}
 	return jsonReply(fmt.Sprintf("samurai title %d (archive: %s)", t.ID, t.Name), map[string]any{"title": page})
 }
 
@@ -303,4 +307,47 @@ func (s *Shop) backupArchive(t *catalog.Title) *archive.Title {
 		return nil
 	}
 	return s.Archive.ByGameCode(archive.GameCode(t.ProductCode))
+}
+
+// archiveScreenshots is a title page's "screenshots" in the layout the eShop reads (TIGER 0x243030):
+// {"screenshot": [{"image_url": [{"type": "upper", "value": url}, {"type": "lower", "value": url}]}]}.
+func archiveScreenshots(base string, t *archive.Title) map[string]any {
+	var list []map[string]any
+	for i, sh := range t.Screenshots {
+		var urls []map[string]any
+		for _, side := range []struct{ name, path string }{{"upper", sh.Upper}, {"lower", sh.Lower}} {
+			if side.path != "" {
+				urls = append(urls, map[string]any{"type": side.name, "value": fmt.Sprintf("%s/shot/%d/%d/%s.jpg", base, t.ID, i, side.name)})
+			}
+		}
+		list = append(list, map[string]any{"image_url": urls})
+	}
+	if list == nil {
+		return nil
+	}
+	return map[string]any{"screenshot": list}
+}
+
+var shotPath = regexp.MustCompile(`^/shot/([0-9]+)/([0-9]+)/(upper|lower)\.jpg$`)
+
+// archiveShot serves an archived screenshot as-is.
+func (s *Shop) archiveShot(path string) *stubReply {
+	m := shotPath.FindStringSubmatch(path)
+	if m == nil || s.Archive == nil {
+		return nil
+	}
+	id, _ := strconv.ParseInt(m[1], 10, 64)
+	n, _ := strconv.Atoi(m[2])
+	t := s.Archive.Title(id)
+	if t == nil || n >= len(t.Screenshots) {
+		return nil
+	}
+	p := t.Screenshots[n].Upper
+	if m[3] == "lower" {
+		p = t.Screenshots[n].Lower
+	}
+	if b := archive.ReadImage(p); b != nil {
+		return &stubReply{name: "image archive screenshot " + m[1], contentType: "image/jpeg", body: b}
+	}
+	return nil
 }

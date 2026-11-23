@@ -38,7 +38,11 @@ type Title struct {
 	Banner      string
 	Demo        bool
 	Country     string
+	Screenshots []Shot // only titles whose detail page was archived
 }
+
+// Shot is one screenshot: the top and bottom screens (local files; either may be "").
+type Shot struct{ Upper, Lower string }
 
 // GameCode is the 4-character code inside the product code ("CTR-N-AJRE" -> "AJRE"), which is the same
 // for a game's card and download versions and matches the code inside its CIA.
@@ -108,6 +112,12 @@ type xmlTitle struct {
 	RetailDate  string `xml:"release_date_on_retail"`
 	Description string `xml:"description"`
 	Demo        bool   `xml:"demo_available"`
+	Screenshots []struct {
+		Images []struct {
+			Type string `xml:"type,attr"`
+			URL  string `xml:",chardata"`
+		} `xml:"image_url"`
+	} `xml:"screenshots>screenshot"`
 }
 
 type xmlDir struct {
@@ -231,6 +241,22 @@ func (x *Index) addTitle(xt *xmlTitle, country string) {
 	set(&t.Icon, x.local(xt.IconURL))
 	set(&t.Banner, x.local(xt.BannerURL))
 	t.Demo = t.Demo || xt.Demo
+	if len(t.Screenshots) == 0 {
+		for _, sc := range xt.Screenshots {
+			var shot Shot
+			for _, im := range sc.Images {
+				switch im.Type {
+				case "upper":
+					shot.Upper = x.local(im.URL)
+				case "lower":
+					shot.Lower = x.local(im.URL)
+				}
+			}
+			if shot.Upper != "" || shot.Lower != "" {
+				t.Screenshots = append(t.Screenshots, shot)
+			}
+		}
+	}
 	if c := GameCode(pc); c != "" {
 		if old := x.byCode[c]; old == nil || (old.Banner == "" && t.Banner != "") {
 			x.byCode[c] = t
