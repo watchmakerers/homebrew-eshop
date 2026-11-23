@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"golang.org/x/image/draw"
@@ -99,7 +100,8 @@ func (s *Shop) artVersion() string {
 	return fmt.Sprintf("%08x", h.Sum32())
 }
 
-// Telops are the ticker lines: <ArtDir>/telops.txt if it has any, else the default.
+// Telops are the ticker lines: <ArtDir>/telops.txt if it has any, else the default; plus a line for the
+// time of year (seasonalTelop).
 func (s *Shop) Telops() []string {
 	if s.ArtDir != "" {
 		if data, err := os.ReadFile(filepath.Join(s.ArtDir, "telops.txt")); err == nil {
@@ -110,6 +112,9 @@ func (s *Shop) Telops() []string {
 				}
 			}
 			if len(out) > 0 {
+				if line := seasonalTelop(time.Now()); line != "" {
+					out = append(out, line)
+				}
 				return out
 			}
 		}
@@ -120,7 +125,29 @@ func (s *Shop) Telops() []string {
 			n++
 		}
 	}
-	return []string{fmt.Sprintf("Welcome to the homebrew eShop: %d apps from the community, free to download.", n)}
+	out := []string{fmt.Sprintf("Welcome to the homebrew eShop: %d apps from the community, free to download.", n)}
+	if s.Archive != nil {
+		out = append(out, fmt.Sprintf("Browse %d games from the archived Nintendo eShop. Own one? Put its CIA in your backups folder to download it here.", len(s.Archive.Titles)))
+	}
+	if line := seasonalTelop(time.Now()); line != "" {
+		out = append(out, line)
+	}
+	return out
+}
+
+// seasonalTelop is an extra ticker line for the time of year, or "".
+func seasonalTelop(now time.Time) string {
+	switch m, d := now.Month(), now.Day(); {
+	case m == time.December:
+		return "Happy holidays! Enjoy the winter music."
+	case m == time.January && d <= 7:
+		return fmt.Sprintf("Happy New Year %d!", now.Year())
+	case m == time.October && d >= 15:
+		return "Happy Halloween!"
+	case m == time.July || m == time.August:
+		return "Summer is here. Grab something new to play."
+	}
+	return ""
 }
 
 // --- generated artwork ---

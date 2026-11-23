@@ -98,6 +98,9 @@ func (s *Stubs) Respond(host string, r *http.Request, body []byte) *stubReply {
 		return s.Shop.image(r.URL.Path)
 	case strings.HasPrefix(host, "samurai."):
 		if m := samuraiPath.FindStringSubmatch(r.URL.Path); m != nil {
+			if m[2] == "contents" && s.Shop != nil {
+				return s.Shop.search(host, r.URL.Query())
+			}
 			if m[2] == "directories" && s.Shop != nil {
 				return s.Shop.directories(host)
 			}

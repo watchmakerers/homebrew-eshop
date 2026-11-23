@@ -101,6 +101,31 @@ func (s *Shop) Preview() http.Handler {
 		render(w, "dir", data)
 	})
 
+	mux.HandleFunc("/s", func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		rep := s.search(host, url.Values{"freeword": {q.Get("q")}, "limit": {"60"}, "offset": {q.Get("offset")}, "sort": {q.Get("sort")}})
+		var v struct {
+			Contents struct {
+				Total   int `json:"total"`
+				Content []struct {
+					Title struct {
+						ID        int64  `json:"id"`
+						Name      string `json:"name"`
+						Icon      string `json:"icon_url"`
+						Genre     string `json:"display_genre"`
+						Date      string `json:"release_date_on_eshop"`
+						Sales     bool   `json:"eshop_sales"`
+						Publisher struct {
+							Name string `json:"name"`
+						} `json:"publisher"`
+					} `json:"title"`
+				} `json:"content"`
+			} `json:"contents"`
+		}
+		decode(rep, &v)
+		render(w, "search", map[string]any{"Q": q.Get("q"), "Hits": v.Contents.Content, "Total": v.Contents.Total, "Raw": pretty(rep)})
+	})
+
 	mux.HandleFunc("/t/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, _ := strconv.Atoi(r.PathValue("id"))
 		rep := s.title(host, id)
@@ -215,6 +240,7 @@ details{margin-top:18px}pre{overflow:auto;font-size:11.5px;background:var(--card
 
 {{define "home"}}{{template "head"}}
 <h1>Shop preview</h1>
+<form action="/s" style="display:flex;gap:8px;margin-bottom:12px"><input name="q" placeholder="Search" style="flex:1;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)"><button style="font:inherit;padding:8px 14px;border-radius:8px;border:0;background:var(--accent);color:#fff">Search</button></form>
 <div class="ticker">{{range .Telops}}{{.}} &nbsp;·&nbsp; {{end}}</div>
 <div class="grid">{{range .Dirs}}<a class="tile" href="/d/{{.ID}}">{{if .New}}<i class="new">New</i>{{end}}
 <img src="{{.Icon}}" alt="" loading="lazy"><span>{{.Name}}</span></a>{{end}}</div>
@@ -232,6 +258,15 @@ details{margin-top:18px}pre{overflow:auto;font-size:11.5px;background:var(--card
 <div class="pager">{{if .Prev}}<a href="?offset={{.Prev}}">← Previous</a>{{else}}{{if eq .From 1}}<span></span>{{else}}<a href="?offset=0">← Previous</a>{{end}}{{end}}
 {{if .Next}}<a href="?offset={{.Next}}">Next →</a>{{end}}</div>
 <details><summary>directory reply</summary><pre>{{.Raw}}</pre></details>
+{{template "foot"}}{{end}}
+
+{{define "search"}}{{template "head"}}
+<a class="crumb" href="/">← Categories</a>
+<form action="/s" style="display:flex;gap:8px;margin-bottom:12px"><input name="q" value="{{.Q}}" style="flex:1;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)"><button style="font:inherit;padding:8px 14px;border-radius:8px;border:0;background:var(--accent);color:#fff">Search</button></form>
+<div class="meta">{{.Total}} results{{if gt .Total 60}} (first 60){{end}}</div>
+<div class="list">{{range .Hits}}<a href="/t/{{.Title.ID}}"><img src="{{.Title.Icon}}" alt="" loading="lazy"><div><div>{{.Title.Name}}</div>
+<small>{{.Title.Publisher.Name}} · {{.Title.Genre}} · {{.Title.Date}}{{if .Title.Sales}} · <b>downloadable</b>{{end}}</small></div></a>{{end}}</div>
+<details><summary>contents reply</summary><pre>{{.Raw}}</pre></details>
 {{template "foot"}}{{end}}
 
 {{define "title"}}{{template "head"}}

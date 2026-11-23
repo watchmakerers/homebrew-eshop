@@ -155,32 +155,7 @@ func (s *Shop) directory(samuraiHost string, id int, q map[string][]string) *stu
 	base := imgBase(samuraiHost)
 	content := make([]map[string]any, 0, len(page))
 	for i, t := range page {
-		sid := ShopID(t)
-		author := t.Author
-		if author == "" {
-			author = "Unknown"
-		}
-		genre := "Homebrew"
-		if len(t.Categories) > 0 {
-			if n := categoryNames[strings.ToLower(t.Categories[0])]; n != "" {
-				genre = n
-			}
-		}
-		content = append(content, map[string]any{
-			"index": offset + i + 1,
-			"title": map[string]any{
-				"id":                    sid,
-				"name":                  t.Name,
-				"product_code":          fmt.Sprintf("HBR-N-%06X", sid&0xFFFFFF),
-				"publisher":             map[string]any{"id": 1, "name": author},
-				"display_genre":         genre,
-				"release_date_on_eshop": releaseDate(t.Updated),
-				"retail_sales":          false, "eshop_sales": true, "demo_available": false,
-				"aoc_available": false, "in_app_purchase": false, "new": isNew(&t),
-				"icon_url":   fmt.Sprintf("%s/icon/%d.jpg", base, sid),
-				"banner_url": fmt.Sprintf("%s/banner/%d.jpg", base, sid),
-			},
-		})
+		content = append(content, map[string]any{"index": offset + i + 1, "title": homebrewSummary(base, &t)})
 	}
 	return jsonReply(fmt.Sprintf("samurai directory %d (catalog, %d titles)", id, len(page)), map[string]any{"directory": map[string]any{
 		"id": dir.id, "name": dir.name,
@@ -454,5 +429,26 @@ func (s *Shop) store(key string, data []byte) {
 	s.images[key] = data
 	if s.CacheDir != "" && os.MkdirAll(s.CacheDir, 0o755) == nil {
 		os.WriteFile(filepath.Join(s.CacheDir, key+".jpg"), data, 0o644)
+	}
+}
+
+// homebrewSummary is a catalog title as title lists (directories, search) show it.
+func homebrewSummary(base string, t *catalog.Title) map[string]any {
+	sid := ShopID(*t)
+	author := t.Author
+	if author == "" {
+		author = "Unknown"
+	}
+	return map[string]any{
+		"id":                    sid,
+		"name":                  t.Name,
+		"product_code":          fmt.Sprintf("HBR-N-%06X", sid&0xFFFFFF),
+		"publisher":             map[string]any{"id": 1, "name": author},
+		"display_genre":         genreOf(t),
+		"release_date_on_eshop": releaseDate(t.Updated),
+		"retail_sales":          false, "eshop_sales": true, "demo_available": false,
+		"aoc_available": false, "in_app_purchase": false, "new": isNew(t),
+		"icon_url":   fmt.Sprintf("%s/icon/%d.jpg", base, sid),
+		"banner_url": fmt.Sprintf("%s/banner/%d.jpg", base, sid),
 	}
 }
