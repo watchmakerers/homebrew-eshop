@@ -27,6 +27,8 @@ type Stubs struct {
 	HashFile string
 	// Shop, if set, serves categories, title lists and images from the real catalog instead of placeholders.
 	Shop *Shop
+	// BGM, if set, serves the eShop's seasonal music over SpotPass (needs BGMHost intercepted).
+	BGM *BGM
 
 	mu   sync.Mutex
 	hash string
@@ -61,6 +63,8 @@ var countryPath = regexp.MustCompile(`^/ninja/ws/country/([A-Za-z]{2})$`)
 // Respond returns a reply for a known request, or nil.
 func (s *Stubs) Respond(host string, r *http.Request, body []byte) *stubReply {
 	switch {
+	case host == BGMHost && s.BGM != nil:
+		return s.BGM.respond(r.URL.Path)
 	case strings.HasPrefix(host, "ninja.") && r.URL.Path == "/ninja/ws/service_hosts":
 		return s.serviceHosts(host)
 	case strings.HasPrefix(host, "ninja.") && countryPath.MatchString(r.URL.Path):

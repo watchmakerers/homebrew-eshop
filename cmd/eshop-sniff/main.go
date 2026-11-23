@@ -22,6 +22,8 @@ import (
 
 	"github.com/miekg/dns"
 
+	"homebrew-eshop/internal/bgm"
+	"homebrew-eshop/internal/boss"
 	"homebrew-eshop/internal/shopload"
 	"homebrew-eshop/internal/sniff"
 )
@@ -41,6 +43,8 @@ func main() {
 		responses  = flag.String("responses", "sniff-data/responses", "canned replies: <dir>/<host>/<path>")
 		noStubs    = flag.Bool("no-stubs", false, "don't answer the eShop's startup requests (only canned files)")
 		catalogCfg = flag.String("catalog", "", "eshopd config (e.g. config.yaml): serve its catalog's categories, titles and icons instead of placeholders")
+		bgmCal     = flag.String("bgm", "", "season calendar (e.g. bgm/calendar.yaml): serve the eShop's music over SpotPass; needs -boss-key")
+		bossKey    = flag.String("boss-key", "", "file with the BOSS AES key from your own console (32 hex digits)")
 		acctProxy  = flag.Bool("account-proxy", false, "also intercept "+sniff.AccountHost+": forward everything to Pretendo, but answer the eShop's service token request when Pretendo refuses it")
 	)
 	flag.Parse()
@@ -59,6 +63,24 @@ func main() {
 	if *acctProxy {
 		// The push notification server too: the eShop uses a token we make up with it, which must stay on this PC.
 		*patterns += "," + sniff.AccountHost + "," + sniff.NPNSHost
+	}
+	if *bgmCal != "" && stubs != nil {
+		if *bossKey == "" {
+			fmt.Fprintln(os.Stderr, "eshop-sniff: -bgm needs -boss-key (the BOSS AES key from your own console)")
+			os.Exit(2)
+		}
+		cal, err := bgm.LoadCalendar(*bgmCal)
+		if err == nil {
+			var key []byte
+			if key, err = boss.LoadKey(*bossKey); err == nil {
+				stubs.BGM = &sniff.BGM{Calendar: cal, Key: key}
+				*patterns += "," + sniff.BGMHost
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "eshop-sniff: -bgm:", err)
+			os.Exit(1)
+		}
 	}
 	if err := run(*dnsAddr, *upstream, *answer, *patterns, *allowAny, *httpAddr, *httpsAddr, *certFile, *keyFile, *logDir, *responses, stubs, *acctProxy); err != nil {
 		fmt.Fprintln(os.Stderr, "eshop-sniff:", err)

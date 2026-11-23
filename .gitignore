@@ -13,3 +13,7 @@ bgm/ost/
 bgm/out/
 bgm/archive/
 __pycache__/
+
+# BOSS (SpotPass) key: dumped from your own console, never committed
+*boss*key*
+*.boss
