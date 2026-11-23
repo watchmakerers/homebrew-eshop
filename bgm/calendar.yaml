@@ -1,0 +1,10 @@
+# Seasonal eShop music. Each season starts on its MM-DD and lasts until the next one starts (wrapping
+# around the year). bgm-pack puts the season playing on -date in slot 1 and the next one in slot 2.
+bitrate: 64k
+seasons:
+  - {name: Winter (January 2016),  start: "01-01", file: "ost/21. January 2016 (3DS & Wii U).mp3"}
+  - {name: Spring (May 2016),      start: "04-01", file: "ost/22. May 2016 (3DS & Wii U).mp3"}
+  - {name: June (June 2015),       start: "06-01", file: "ost/18. June 2015 (3DS & Wii U).mp3"}
+  - {name: Summer (July 2014),     start: "07-01", file: "ost/16. July 2014 (3DS & Wii U).mp3"}
+  - {name: Fall (September 2015),  start: "09-01", file: "ost/19. September 2015 (3DS & Wii U).mp3"}
+  - {name: Holiday (December 2015), start: "12-01", file: "ost/20. December 2015 (3DS & Wii U).mp3"}

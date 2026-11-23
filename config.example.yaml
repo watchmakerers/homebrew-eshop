@@ -1,0 +1,44 @@
+# Copy to config.yaml and edit.
+
+listen: 127.0.0.1:8080
+cache_dir: cache          # last good copy of each source, used when a source is down
+refresh_interval: 6h
+# github_token: ""        # optional; or set GITHUB_TOKEN. Without one GitHub allows 60 API requests/hour.
+
+# Where the catalog comes from. When two sources list the same app (same title ID, or same name if there's
+# no title ID), the one with the higher priority wins and the others fill in anything it's missing.
+sources:
+  - name: Universal-DB
+    type: unistore                     # any Universal-Updater store (.unistore) works
+    url: https://db.universal-team.net/unistore/universal-db.unistore
+    meta_url: https://db.universal-team.net/data/full.json   # icons and banners
+    priority: 10
+
+  # - name: Another homebrew store
+  #   type: unistore
+  #   url: https://example.com/store.unistore
+  #   priority: 5
+
+  # An app that isn't in any store: its latest GitHub release.
+  # - name: Some app
+  #   type: github
+  #   repo: owner/repo
+  #   asset_pattern: "*.cia"           # default
+  #   title_id: 000400000XXXXX00       # optional, lets it merge with store entries for the same app
+  #   priority: 20
+
+  # .cia files on this machine (e.g. your own builds). Title IDs are read from the files; metadata can go in
+  # a sidecar: MyApp.cia + MyApp.json {"name", "author", "description", "categories", "version"}.
+  # - name: Local
+  #   type: local
+  #   path: ./local-cias
+  #   priority: 30
+  #   enabled: false
+
+  # Your own dumps of games you own (e.g. GodMode9 "Build CIA" from your cartridges or installed titles), to
+  # reinstall them from this PC. Names and publishers come from each CIA's icon data (SMDH). These files stay on
+  # this machine and are only served to the console on your LAN. Keep this off any server other people can reach.
+  # - name: My backups
+  #   type: backups
+  #   path: ./backups
+  #   priority: 40

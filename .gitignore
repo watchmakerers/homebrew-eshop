@@ -1,0 +1,15 @@
+cache/
+config.yaml
+/eshopd
+sniff-data/
+/eshop-sniff
+dumps/
+art/categories/*
+art/titles/*
+warcs/
+/shop-preview
+backups/
+bgm/ost/
+bgm/out/
+bgm/archive/
+__pycache__/

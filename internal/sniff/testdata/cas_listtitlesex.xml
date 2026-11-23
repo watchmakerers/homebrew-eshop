@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+                   xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                   xmlns:cas="urn:cas.wsapi.broadon.com">
+<SOAP-ENV:Body>
+<cas:ListTitlesEx xsi:type="cas:ListTitlesExRequestType">
+<cas:Version>2.0</cas:Version>
+<cas:MessageId>EC-1-1</cas:MessageId>
+<cas:DeviceId>1</cas:DeviceId>
+<cas:DeviceToken>WT-0000</cas:DeviceToken>
+<cas:AccountId>1</cas:AccountId>
+<cas:ApplicationId>0004001000020900</cas:ApplicationId>
+<cas:TIN>56789</cas:TIN>
+<cas:Region>JPN</cas:Region>
+<cas:Country>JP</cas:Country>
+<cas:Language>ja</cas:Language>
+<cas:ListResultOffset>0</cas:ListResultOffset><cas:ListResultLimit>10</cas:ListResultLimit><cas:Attributes>Version</cas:Attributes><cas:Attributes>Prices</cas:Attributes><cas:Attributes>MaxUserFileSize</cas:Attributes><cas:AttributeFiltersEx><cas:FilterType>==</cas:FilterType><cas:DataType>string</cas:DataType><cas:Name>PricingSelection</cas:Name><cas:Value>RELEASED</cas:Value></cas:AttributeFiltersEx><cas:TitleId>000400000FEF0300</cas:TitleId>
+</cas:ListTitlesEx>
+</SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

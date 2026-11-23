@@ -1,0 +1,3 @@
+# One ticker message per line. Delete these to get the default.
+Welcome to the homebrew eShop!
+Everything here is free, made by the 3DS homebrew community.
