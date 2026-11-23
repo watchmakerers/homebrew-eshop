@@ -237,6 +237,9 @@ func (s *Shop) image(path string) *stubReply {
 	if strings.HasPrefix(path, "/shot/") {
 		return s.archiveShot(path)
 	}
+	if strings.HasPrefix(path, "/rating/") {
+		return s.archiveRatingIcon(path)
+	}
 	m := imagePath.FindStringSubmatch(path)
 	if m == nil {
 		return nil

@@ -33,12 +33,36 @@ type Title struct {
 	Platform    string
 	Released    string // YYYY-MM-DD, eShop release if known, else retail
 	Description string // only titles whose detail page was archived have one
-	Rating      string
 	Icon        string // local file, "" if the image wasn't archived
 	Banner      string
 	Demo        bool
 	Country     string
 	Screenshots []Shot // only titles whose detail page was archived
+	Stars       *Stars
+	Rating      *Rating
+}
+
+// Stars is a title's user rating ("star_rating_info").
+type Stars struct {
+	Score float64
+	Votes int
+	Star  [5]int // votes per star count, 1..5
+}
+
+// Rating is a title's age rating ("rating_info"), e.g. ESRB T.
+type Rating struct {
+	SystemID    int
+	System      string // ESRB, PEGI, CERO...
+	ID          int
+	Name        string // T, E10+...
+	Age         int
+	Icons       []RatingIcon
+	Descriptors []string // "Violence", "Mild Language"...
+}
+
+type RatingIcon struct {
+	Path string // local file
+	Type string // normal, small
 }
 
 // Shot is one screenshot: the top and bottom screens (local files; either may be "").
@@ -120,8 +144,30 @@ type xmlTitle struct {
 	} `xml:"publisher"`
 	Genre  string `xml:"display_genre"`
 	Rating struct {
-		Name string `xml:"rating>name"`
+		System struct {
+			ID   int    `xml:"id,attr"`
+			Name string `xml:"name"`
+		} `xml:"rating_system"`
+		Rating struct {
+			ID    int    `xml:"id,attr"`
+			Name  string `xml:"name"`
+			Age   int    `xml:"age"`
+			Icons []struct {
+				URL  string `xml:"url,attr"`
+				Type string `xml:"type,attr"`
+			} `xml:"icons>icon"`
+		} `xml:"rating"`
+		Descriptors []string `xml:"descriptors>descriptor>name"`
 	} `xml:"rating_info"`
+	Stars *struct {
+		Score float64 `xml:"score"`
+		Votes int     `xml:"votes"`
+		Star1 int     `xml:"star1"`
+		Star2 int     `xml:"star2"`
+		Star3 int     `xml:"star3"`
+		Star4 int     `xml:"star4"`
+		Star5 int     `xml:"star5"`
+	} `xml:"star_rating_info"`
 	EshopDate   string `xml:"release_date_on_eshop"`
 	RetailDate  string `xml:"release_date_on_retail"`
 	Description string `xml:"description"`
@@ -248,7 +294,22 @@ func (x *Index) addTitle(xt *xmlTitle, country string) {
 	set(&t.Publisher, xt.Publisher.Name)
 	set(&t.Genre, xt.Genre)
 	set(&t.Platform, xt.Platform.Name)
-	set(&t.Rating, xt.Rating.Name)
+	if r := xt.Rating; t.Rating == nil && r.Rating.Name != "" {
+		rt := &Rating{SystemID: r.System.ID, System: strings.TrimSpace(r.System.Name), ID: r.Rating.ID,
+			Name: strings.TrimSpace(r.Rating.Name), Age: r.Rating.Age}
+		for _, ic := range r.Rating.Icons {
+			if p := x.local(ic.URL); p != "" {
+				rt.Icons = append(rt.Icons, RatingIcon{Path: p, Type: ic.Type})
+			}
+		}
+		for _, d := range r.Descriptors {
+			rt.Descriptors = append(rt.Descriptors, strings.TrimSpace(d))
+		}
+		t.Rating = rt
+	}
+	if st := xt.Stars; st != nil && st.Votes > 0 && (t.Stars == nil || st.Votes > t.Stars.Votes) {
+		t.Stars = &Stars{Score: st.Score, Votes: st.Votes, Star: [5]int{st.Star1, st.Star2, st.Star3, st.Star4, st.Star5}}
+	}
 	set(&t.Released, dateRe.FindString(xt.EshopDate))
 	set(&t.Released, dateRe.FindString(xt.RetailDate))
 	set(&t.Description, clean(xt.Description))

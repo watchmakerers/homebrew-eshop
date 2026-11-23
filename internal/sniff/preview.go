@@ -121,6 +121,29 @@ func (s *Shop) Preview() http.Handler {
 				Publisher   struct {
 					Name string `json:"name"`
 				} `json:"publisher"`
+				Stars *struct {
+					Score float64 `json:"score"`
+					Votes int     `json:"votes"`
+				} `json:"star_rating_info"`
+				Rating *struct {
+					System struct {
+						Name string `json:"name"`
+					} `json:"rating_system"`
+					Rating struct {
+						Name  string `json:"name"`
+						Icons struct {
+							Icon []struct {
+								URL  string `json:"url"`
+								Type string `json:"type"`
+							} `json:"icon"`
+						} `json:"icons"`
+					} `json:"rating"`
+					Descriptors struct {
+						Descriptor []struct {
+							Name string `json:"name"`
+						} `json:"descriptor"`
+					} `json:"descriptors"`
+				} `json:"rating_info"`
 				Screenshots struct {
 					Screenshot []struct {
 						Images []struct {
@@ -219,6 +242,9 @@ details{margin-top:18px}pre{overflow:auto;font-size:11.5px;background:var(--card
 <div><h1 style="margin:0">{{.T.Name}}</h1><div class="meta">{{.T.Publisher.Name}} · {{.T.Genre}} · {{.T.Date}}</div></div></div>
 <p><span class="badge">{{.T.ProductCode}}</span>{{if .T.TitleID}}<span class="badge">{{.T.TitleID}}</span>{{end}}
 <span class="badge">{{if .T.Download}}downloadable{{else}}browse only{{end}}</span><span class="badge">price: {{.Status}}</span></p>
+{{with .T.Stars}}<p class="meta">★ {{printf "%.2f" .Score}} from {{.Votes}} votes</p>{{end}}
+{{with .T.Rating}}<p class="meta" style="display:flex;gap:8px;align-items:center">{{range .Rating.Icons.Icon}}{{if eq .Type "normal"}}<img src="{{.URL}}" alt="" style="height:40px">{{end}}{{end}}
+<span>{{.System.Name}} {{.Rating.Name}}{{range .Descriptors.Descriptor}} · {{.Name}}{{end}}</span></p>{{end}}
 <div class="desc">{{.T.Description}}</div>
 {{with .T.Screenshots.Screenshot}}<h1 style="font-size:16px;margin-top:16px">Screenshots</h1>
 <div class="shots">{{range .}}<div class="shot">{{range .Images}}<img src="{{.Value}}" alt="{{.Type}} screen" loading="lazy" class="{{.Type}}">{{end}}</div>{{end}}</div>{{end}}

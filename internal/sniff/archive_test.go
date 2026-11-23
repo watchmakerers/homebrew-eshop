@@ -32,7 +32,11 @@ func TestArchiveShop(t *testing.T) {
 		`<content index="1"><title id="50010000000001"><product_code>CTR-N-AKRE</product_code><name>Kirby Test</name>`+
 		`<icon_url>`+img+`aaaa.jpg</icon_url><banner_url>`+img+`bbbb.jpg</banner_url>`+
 		`<platform device="CTR"><name>Nintendo 3DS Download Only</name></platform><publisher><name>Nintendo</name></publisher>`+
-		`<display_genre>Action</display_genre><release_date_on_eshop>2014-01-02</release_date_on_eshop></title></content>`+
+		`<display_genre>Action</display_genre><rating_info><rating_system id="202"><name>ESRB</name></rating_system><rating id="2">`+
+		`<icons><icon url="`+img+`eeee1.jpg" type="normal"/></icons><name>E</name><age>6</age></rating>`+
+		`<descriptors><descriptor><name>Comic Mischief</name></descriptor></descriptors></rating_info>`+
+		`<star_rating_info><score>4.5</score><votes>10</votes><star1>0</star1><star2>0</star2><star3>1</star3><star4>3</star4><star5>6</star5></star_rating_info>`+
+		`<release_date_on_eshop>2014-01-02</release_date_on_eshop></title></content>`+
 		`<content index="2"><title id="50010000000002"><product_code>CTR-N-UPDE</product_code><name>Some update</name>`+
 		`<platform><name>Software Update</name></platform></title></content></contents></eshop>`))
 	writeFile(t, filepath.Join(ws, "SI", "directories@y"), []byte(`<eshop><directories>`+
@@ -47,6 +51,7 @@ func TestArchiveShop(t *testing.T) {
 	writeFile(t, filepath.Join(images, "bbbb.jpg"), []byte("BANNER"))
 	writeFile(t, filepath.Join(images, "cccc.jpg"), []byte("TILE"))
 	writeFile(t, filepath.Join(images, "ffff.jpg"), []byte("TOP"))
+	writeFile(t, filepath.Join(images, "eeee1.jpg"), []byte("ESRB-E"))
 	writeFile(t, filepath.Join(images, "9999.jpg"), []byte("BOTTOM"))
 
 	x, err := archive.Load(root)
@@ -119,6 +124,16 @@ func TestArchiveShop(t *testing.T) {
 	}
 
 	page = shop.title(host, 50010000000001)
+	for _, want := range []string{`"star_rating_info":{"score":4.5,"star1":0,"star2":0,"star3":1,"star4":3,"star5":6,"votes":10}`,
+		`"rating":{"age":6,"icons":{"icon":[{"type":"normal","url":"https://img.ctr.shop.pretendo.cc/rating/50010000000001/0.jpg"}]},"id":2,"name":"E"}`,
+		`"rating_system":{"id":202,"name":"ESRB"}`, `"descriptors":{"descriptor":[{"name":"Comic Mischief"}]}`} {
+		if !bytes.Contains(page.body, []byte(want)) {
+			t.Errorf("title page lacks %s:\n%s", want, page.body)
+		}
+	}
+	if r := shop.image("/rating/50010000000001/0.jpg"); r == nil || string(r.body) != "ESRB-E" {
+		t.Errorf("rating icon not served: %v", r)
+	}
 	if !bytes.Contains(page.body, []byte(`"screenshots":{"screenshot":[{"image_url":[{"type":"upper","value":"https://img.ctr.shop.pretendo.cc/shot/50010000000001/0/upper.jpg"},{"type":"lower"`)) {
 		t.Errorf("screenshots missing from title page: %s", page.body)
 	}

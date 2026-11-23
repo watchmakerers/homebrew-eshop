@@ -203,6 +203,36 @@ func (s *Shop) ownedBackup(at *archive.Title) *catalog.Title {
 }
 
 func archiveTitleSummary(base string, t *archive.Title, owned bool) map[string]any {
+	m := archiveTitleFields(base, t, owned)
+	// Both optional to the app (TIGER 0x2435d0, 0x242a10): score is a JSON number, the counts integers; a
+	// rating it can't read falls back to the default.
+	if st := t.Stars; st != nil {
+		m["star_rating_info"] = map[string]any{"score": st.Score, "votes": st.Votes,
+			"star1": st.Star[0], "star2": st.Star[1], "star3": st.Star[2], "star4": st.Star[3], "star5": st.Star[4]}
+	}
+	if r := t.Rating; r != nil {
+		var icons []map[string]any
+		for i, ic := range r.Icons {
+			icons = append(icons, map[string]any{"url": fmt.Sprintf("%s/rating/%d/%d.jpg", base, t.ID, i), "type": ic.Type})
+		}
+		rating := map[string]any{"id": r.ID, "name": r.Name, "age": r.Age}
+		if icons != nil {
+			rating["icons"] = map[string]any{"icon": icons}
+		}
+		info := map[string]any{"rating_system": map[string]any{"id": r.SystemID, "name": r.System}, "rating": rating}
+		if len(r.Descriptors) > 0 {
+			var ds []map[string]any
+			for _, d := range r.Descriptors {
+				ds = append(ds, map[string]any{"name": d})
+			}
+			info["descriptors"] = map[string]any{"descriptor": ds}
+		}
+		m["rating_info"] = info
+	}
+	return m
+}
+
+func archiveTitleFields(base string, t *archive.Title, owned bool) map[string]any {
 	return map[string]any{
 		"id":                    t.ID,
 		"name":                  t.Name,
@@ -360,6 +390,26 @@ func archiveScreenshots(base string, t *archive.Title) map[string]any {
 		return nil
 	}
 	return map[string]any{"screenshot": list}
+}
+
+var ratingPath = regexp.MustCompile(`^/rating/([0-9]+)/([0-9]+)\.jpg$`)
+
+// archiveRatingIcon serves an archived age-rating icon as-is.
+func (s *Shop) archiveRatingIcon(path string) *stubReply {
+	m := ratingPath.FindStringSubmatch(path)
+	if m == nil || s.Archive == nil {
+		return nil
+	}
+	id, _ := strconv.ParseInt(m[1], 10, 64)
+	n, _ := strconv.Atoi(m[2])
+	t := s.Archive.Title(id)
+	if t == nil || t.Rating == nil || n >= len(t.Rating.Icons) {
+		return nil
+	}
+	if b := archive.ReadImage(t.Rating.Icons[n].Path); b != nil {
+		return &stubReply{name: "image archive rating " + m[1], contentType: "image/jpeg", body: b}
+	}
+	return nil
 }
 
 var shotPath = regexp.MustCompile(`^/shot/([0-9]+)/([0-9]+)/(upper|lower)\.jpg$`)
