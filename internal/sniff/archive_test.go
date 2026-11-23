@@ -57,8 +57,49 @@ func TestArchiveShop(t *testing.T) {
 		t.Fatalf("titles = %d, want 1 (updates are skipped)", len(x.Titles))
 	}
 	backup := catalog.Title{Name: "My Kirby", Backup: true, ProductCode: "CTR-P-AKRE", CIA: &catalog.CIASource{Path: "x.cia"}}
-	shop := &Shop{Titles: func() []catalog.Title { return []catalog.Title{backup} }, Archive: x}
+	var have []catalog.Title // the user's backups: none yet
+	shop := &Shop{Titles: func() []catalog.Title { return have }, Archive: x}
 	host := "samurai.ctr.shop.pretendo.cc"
+
+	// Not owned: browse only, sales terminated.
+	r := shop.directory(host, 1094196, url.Values{})
+	if r == nil || !bytes.Contains(r.body, []byte(`"id":50010000000001`)) || !bytes.Contains(r.body, []byte(`"eshop_sales":false`)) {
+		t.Fatalf("archive directory: %v", r)
+	}
+	page := shop.title(host, 50010000000001)
+	if page == nil || !bytes.Contains(page.body, []byte(`Line one\nLine two`)) || !bytes.Contains(page.body, []byte(`"downloadable":false`)) {
+		t.Fatalf("archive title page: %s", page.body)
+	}
+	prices := shop.onlinePrices("US", url.Values{"title[]": {"50010000000001"}})
+	if !bytes.Contains(prices.body, []byte(`"sales_termination"`)) {
+		t.Errorf("prices: %s", prices.body)
+	}
+	if shop.find(50010000000001) != nil {
+		t.Error("an unowned archive title must not be installable")
+	}
+
+	// Owned (a Japanese dump, CTR-P-AKRJ, of the archived American CTR-N-AKRE): on sale, free, installs the backup.
+	have = []catalog.Title{{Name: "My JP Kirby", Backup: true, ProductCode: "CTR-P-AKRJ", TitleID: 0x0004000000123400, CIA: &catalog.CIASource{Path: "jp.cia"}}}
+	r = shop.directory(host, 1094196, url.Values{})
+	if r == nil || !bytes.Contains(r.body, []byte(`"eshop_sales":true`)) {
+		t.Fatalf("owned archive directory entry should be on sale: %s", r.body)
+	}
+	page = shop.title(host, 50010000000001)
+	if page == nil || !bytes.Contains(page.body, []byte(`"downloadable":true`)) || !bytes.Contains(page.body, []byte(`"title_id":"0004000000123400"`)) {
+		t.Fatalf("owned archive title page: %s", page.body)
+	}
+	prices = shop.onlinePrices("US", url.Values{"title[]": {"50010000000001"}})
+	if !bytes.Contains(prices.body, []byte(`"onsale"`)) {
+		t.Errorf("owned prices: %s", prices.body)
+	}
+	if b := shop.find(50010000000001); b == nil || b.Name != "My JP Kirby" {
+		t.Errorf("archive ID should find the backup: %v", b)
+	}
+	if shop.ecInfo(50010000000001) == nil || shop.prepurchaseInfo("US", 50010000000001) == nil {
+		t.Error("ec_info / prepurchase_info should answer for an owned archive title")
+	}
+
+	have = []catalog.Title{backup}
 
 	var dirs struct {
 		Directories struct {
@@ -77,14 +118,7 @@ func TestArchiveShop(t *testing.T) {
 		t.Errorf("directories = %s", got)
 	}
 
-	r := shop.directory(host, 1094196, url.Values{})
-	if r == nil || !bytes.Contains(r.body, []byte(`"id":50010000000001`)) || !bytes.Contains(r.body, []byte(`"eshop_sales":false`)) {
-		t.Fatalf("archive directory: %v", r)
-	}
-	page := shop.title(host, 50010000000001)
-	if page == nil || !bytes.Contains(page.body, []byte(`Line one\nLine two`)) || !bytes.Contains(page.body, []byte(`"downloadable":false`)) {
-		t.Fatalf("archive title page: %s", page.body)
-	}
+	page = shop.title(host, 50010000000001)
 	if !bytes.Contains(page.body, []byte(`"screenshots":{"screenshot":[{"image_url":[{"type":"upper","value":"https://img.ctr.shop.pretendo.cc/shot/50010000000001/0/upper.jpg"},{"type":"lower"`)) {
 		t.Errorf("screenshots missing from title page: %s", page.body)
 	}
@@ -100,11 +134,6 @@ func TestArchiveShop(t *testing.T) {
 	if r := shop.image("/dirbanner/1094196.jpg"); r == nil || len(r.body) < 100 { // not archived: generated
 		t.Errorf("missing category banner should be generated")
 	}
-	prices := shop.onlinePrices("US", url.Values{"title[]": {"50010000000001"}})
-	if !bytes.Contains(prices.body, []byte(`"sales_termination"`)) {
-		t.Errorf("prices: %s", prices.body)
-	}
-
 	// The user's own backup gets the game's original art and description.
 	sid := ShopID(backup)
 	if r := shop.image("/icon/" + strconv.Itoa(sid) + ".jpg"); r == nil || string(r.body) != "ICON" {

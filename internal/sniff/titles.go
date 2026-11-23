@@ -29,12 +29,17 @@ var countryCurrencies = map[string]string{"JP": "JPY", "US": "USD", "CA": "CAD",
 	"DE": "EUR", "FR": "EUR", "IT": "EUR", "ES": "EUR", "NL": "EUR"}
 
 // find returns the installable title with this shop ID.
+//
+// An archived title's ID finds the user's backup of it, so its archive page can be downloaded too.
 func (s *Shop) find(id int) *catalog.Title {
 	for _, t := range s.Titles() {
 		if t.CIA != nil && ShopID(t) == id {
 			t := t
 			return &t
 		}
+	}
+	if at := s.archiveTitle(int64(id)); at != nil {
+		return s.ownedBackup(at)
 	}
 	return nil
 }
@@ -176,7 +181,7 @@ func (s *Shop) onlinePrices(country string, q url.Values) *stubReply {
 			if err != nil {
 				continue
 			}
-			if s.archiveTitle(id) != nil { // the old catalog: no longer sold
+			if at := s.archiveTitle(id); at != nil && s.ownedBackup(at) == nil { // the old catalog: no longer sold
 				list = append(list, map[string]any{"title_id": id, "eshop_sales_status": "sales_termination"})
 				continue
 			}

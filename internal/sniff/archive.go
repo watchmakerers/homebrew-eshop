@@ -160,7 +160,7 @@ func (s *Shop) archiveDirectory(samuraiHost string, d *archiveDir, q map[string]
 	base := imgBase(samuraiHost)
 	content := make([]map[string]any, 0, len(page))
 	for i, t := range page {
-		content = append(content, map[string]any{"index": offset + i + 1, "title": archiveTitleSummary(base, t)})
+		content = append(content, map[string]any{"index": offset + i + 1, "title": archiveTitleSummary(base, t, s.ownedBackup(t) != nil)})
 	}
 	return jsonReply(fmt.Sprintf("samurai directory %d (archive, %d titles)", d.id, len(page)), map[string]any{"directory": map[string]any{
 		"id": d.id, "name": d.name,
@@ -177,7 +177,32 @@ func orUnknown(s string) string {
 	return s
 }
 
-func archiveTitleSummary(base string, t *archive.Title) map[string]any {
+// ownedBackup is the user's own backup of an archived title, matched by game code (any region if the exact
+// code isn't among the backups); nil if they have none. An owned title is downloadable from its archive page.
+func (s *Shop) ownedBackup(at *archive.Title) *catalog.Title {
+	code := at.GameCode()
+	if code == "" {
+		return nil
+	}
+	var other *catalog.Title
+	for _, t := range s.Titles() {
+		if !t.Backup || t.CIA == nil {
+			continue
+		}
+		c := archive.GameCode(t.ProductCode)
+		if c == code {
+			t := t
+			return &t
+		}
+		if other == nil && len(c) == 4 && c[:3] == code[:3] {
+			t := t
+			other = &t
+		}
+	}
+	return other
+}
+
+func archiveTitleSummary(base string, t *archive.Title, owned bool) map[string]any {
 	return map[string]any{
 		"id":                    t.ID,
 		"name":                  t.Name,
@@ -185,7 +210,7 @@ func archiveTitleSummary(base string, t *archive.Title) map[string]any {
 		"publisher":             map[string]any{"id": 1, "name": orUnknown(t.Publisher)},
 		"display_genre":         orUnknown(t.Genre),
 		"release_date_on_eshop": orDate(t.Released),
-		"retail_sales":          false, "eshop_sales": false, "demo_available": false,
+		"retail_sales":          false, "eshop_sales": owned, "demo_available": false,
 		"aoc_available": false, "in_app_purchase": false, "new": false,
 		"icon_url":   fmt.Sprintf("%s/icon/%d.jpg", base, t.ID),
 		"banner_url": fmt.Sprintf("%s/banner/%d.jpg", base, t.ID),
@@ -204,16 +229,25 @@ func (s *Shop) archiveTitlePage(samuraiHost string, t *archive.Title) *stubReply
 	if desc == "" {
 		desc = t.Name
 	}
-	page := archiveTitleSummary(imgBase(samuraiHost), t)
+	owned := s.ownedBackup(t)
+	page := archiveTitleSummary(imgBase(samuraiHost), t, owned != nil)
 	page["formal_name"] = t.Name
 	page["description"] = desc
 	page["disclaimer"] = "From the archived Nintendo eShop catalog. No longer sold; shown for reference only."
+	if owned != nil {
+		page["disclaimer"] = "You own this: downloading installs your own backup from your PC."
+		tid := titleID(owned)
+		if info, err := s.prepareFor(owned, pageWait); err == nil {
+			tid = info.titleID
+		}
+		page["title_id"] = fmt.Sprintf("%016X", tid)
+	}
 	page["genres"] = map[string]any{"genre": []map[string]any{{"id": 1, "name": orUnknown(t.Genre)}}, "length": 1}
 	page["languages"] = map[string]any{"language": []map[string]any{{"iso_code": "en", "name": "English"}}}
 	page["number_of_players"] = "1"
 	page["title_version"] = 0
 	page["ticket_available"] = false
-	page["downloadable"] = false
+	page["downloadable"] = owned != nil
 	page["movie_available"] = false
 	if shots := archiveScreenshots(imgBase(samuraiHost), t); shots != nil {
 		page["screenshots"] = shots

@@ -79,7 +79,21 @@ type Index struct {
 func (x *Index) Title(id int64) *Title { return x.byID[id] }
 
 // ByGameCode finds a title by the 4-character game code; nil if none.
-func (x *Index) ByGameCode(code string) *Title { return x.byCode[strings.ToUpper(code)] }
+// ByGameCode finds a title by the 4-character game code; if that exact code isn't archived, the same game from
+// another region (the last letter is the region: E America, J Japan, P Europe...), preferring America's.
+func (x *Index) ByGameCode(code string) *Title {
+	code = strings.ToUpper(code)
+	if t := x.byCode[code]; t != nil || len(code) != 4 {
+		return t
+	}
+	var best *Title
+	for c, t := range x.byCode {
+		if c[:3] == code[:3] && (best == nil || c[3] == 'E' || (best.GameCode()[3] != 'E' && c < best.GameCode())) {
+			best = t
+		}
+	}
+	return best
+}
 
 func (x *Index) Dir(id int64) *Dir {
 	for _, d := range x.Dirs {
