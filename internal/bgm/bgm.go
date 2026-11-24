@@ -24,7 +24,7 @@ import (
 // Calendar lists the seasons. A season starts on its month/day and runs until the next one starts, wrapping
 // around the year.
 type Calendar struct {
-	Bitrate string   `yaml:"bitrate"` // ffmpeg AAC bitrate, default 64k
+	Bitrate string   `yaml:"bitrate"` // ffmpeg AAC bitrate; default: as high as fits in MaxSize (at most 96k)
 	Seasons []Season `yaml:"seasons"`
 }
 
@@ -32,6 +32,9 @@ type Season struct {
 	Name  string `yaml:"name"`
 	Start string `yaml:"start"` // MM-DD
 	File  string `yaml:"file"`  // relative to the calendar file
+	// Loop is [start, end] in seconds of the source: the eShop plays to end, then jumps back to start. The audio
+	// is cut a second after end. Without it the whole file plays and loops from the beginning.
+	Loop []float64 `yaml:"loop"`
 }
 
 // LoadCalendar reads a calendar file. Relative season files are resolved against its folder.
@@ -47,10 +50,10 @@ func LoadCalendar(path string) (*Calendar, error) {
 	if len(cal.Seasons) == 0 {
 		return nil, fmt.Errorf("%s: no seasons", path)
 	}
-	if cal.Bitrate == "" {
-		cal.Bitrate = "64k"
-	}
 	for i := range cal.Seasons {
+		if l := cal.Seasons[i].Loop; l != nil && (len(l) != 2 || l[0] < 0 || l[1] <= l[0]) {
+			return nil, fmt.Errorf("%s: season %q: loop must be [start, end] seconds", path, cal.Seasons[i].Name)
+		}
 		if f := cal.Seasons[i].File; !filepath.IsAbs(f) {
 			cal.Seasons[i].File = filepath.Join(filepath.Dir(path), f)
 		}
@@ -68,15 +71,27 @@ type Track struct {
 
 // Make encodes the season's audio and writes its header for slot n (1 or 2).
 func (c *Calendar) Make(n int, w Window) (*Track, error) {
-	aac, err := Encode(w.Season.File, c.Bitrate)
+	var cut float64 // seconds of source to keep; 0 = all
+	if l := w.Season.Loop; l != nil {
+		cut = l[1] + 1
+	}
+	aac, err := Encode(w.Season.File, c.Bitrate, cut)
 	if err != nil {
 		return nil, err
+	}
+	if len(aac) > MaxSize {
+		return nil, fmt.Errorf("%s: %d bytes encoded, more than the %d the eShop's own files use; shorten the loop or lower the bitrate",
+			w.Season.File, len(aac), MaxSize)
 	}
 	frames, err := SampleFrames(aac)
 	if err != nil {
 		return nil, err
 	}
-	return &Track{Window: w, XML: Header(n, w.Begin, w.End, len(aac), frames), Audio: aac, Frames: frames}, nil
+	loopStart, loopEnd := 0, frames
+	if l := w.Season.Loop; l != nil {
+		loopStart, loopEnd = Delay+int(l[0]*Rate+0.5), Delay+int(l[1]*Rate+0.5)
+	}
+	return &Track{Window: w, XML: Header(n, w.Begin, w.End, len(aac), loopStart, loopEnd), Audio: aac, Frames: frames}, nil
 }
 
 // Window is when a season plays, in one particular year.
@@ -126,16 +141,64 @@ func Windows(seasons []Season, date time.Time) ([]Window, error) {
 	return out, nil
 }
 
-// Encode converts any audio file to 44.1 kHz stereo AAC-LC in ADTS frames.
-func Encode(src, bitrate string) ([]byte, error) {
-	cmd := exec.Command("ffmpeg", "-v", "error", "-i", src, "-vn", "-map_metadata", "-1",
-		"-ac", "2", "-ar", "44100", "-c:a", "aac", "-profile:a", "aac_low", "-b:a", bitrate, "-f", "adts", "-")
+// The format of Nintendo's own boss_bgm files (the last one Nintendo sent is still in many consoles' extdata):
+// 32 kHz stereo AAC-LC in MPEG-2 ADTS frames, 96 kbit/s, exactly 921600 bytes.
+const (
+	Rate    = 32000
+	MaxSize = 921600
+	Delay   = 1024 // ffmpeg's AAC encoder puts one frame of priming samples in front, which the eShop plays
+)
+
+// Encode converts any audio file (its first cut seconds, or all of it when cut is 0) to Nintendo's format. With
+// no bitrate given it picks the highest that fits in MaxSize, up to Nintendo's 96k.
+func Encode(src, bitrate string, cut float64) ([]byte, error) {
+	if bitrate != "" {
+		return encode(src, bitrate, cut)
+	}
+	secs := cut
+	if secs == 0 {
+		out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src).Output()
+		if err != nil {
+			return nil, fmt.Errorf("ffprobe %s: %v", src, err)
+		}
+		if _, err := fmt.Sscan(string(out), &secs); err != nil {
+			return nil, fmt.Errorf("ffprobe %s: duration %q", src, out)
+		}
+	}
+	kbps := min(96, int(float64(MaxSize)*8/secs/1000))
+	for ; kbps >= 24; kbps -= 4 {
+		aac, err := encode(src, fmt.Sprintf("%dk", kbps), cut)
+		if err != nil || len(aac) <= MaxSize {
+			return aac, err
+		}
+	}
+	return nil, fmt.Errorf("%s: %.0f seconds doesn't fit in %d bytes even at 24k", src, secs, MaxSize)
+}
+
+func encode(src, bitrate string, cut float64) ([]byte, error) {
+	args := []string{"-v", "error", "-i", src}
+	if cut > 0 {
+		args = append(args, "-t", fmt.Sprint(cut))
+	}
+	args = append(args, "-vn", "-map_metadata", "-1", "-ac", "2", "-ar", fmt.Sprint(Rate),
+		"-c:a", "aac", "-profile:a", "aac_low", "-b:a", bitrate, "-f", "adts", "-")
+	cmd := exec.Command("ffmpeg", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("ffmpeg %s: %v: %s", src, err, stderr.String())
 	}
-	return stdout.Bytes(), nil
+	aac := stdout.Bytes()
+	// Mark the frames MPEG-2 like Nintendo's (the same AAC-LC either way).
+	for off := 0; off+7 <= len(aac); {
+		aac[off+1] |= 0x08
+		l := int(aac[off+3]&3)<<11 | int(aac[off+4])<<3 | int(aac[off+5])>>5
+		if l < 7 {
+			break
+		}
+		off += l
+	}
+	return aac, nil
 }
 
 // SampleFrames counts ADTS frames (1024 samples each).
@@ -154,14 +217,15 @@ func SampleFrames(adts []byte) (int, error) {
 	return n * 1024, nil
 }
 
-// Header is the boss_xml file. The downloader only accepted 0xF0-0x400 bytes, so it's padded to at least 0xF0.
-func Header(task int, begin, end time.Time, dataSize, frames int) []byte {
+// Header is the boss_xml file, laid out like Nintendo's: one line under the declaration, root <header>. The
+// downloader only accepted 0xF0-0x400 bytes, so it's padded to at least 0xF0.
+func Header(task int, begin, end time.Time, dataSize, loopStart, loopEnd int) []byte {
 	var b strings.Builder
-	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bgm>\n")
-	field := func(k string, v int) { fmt.Fprintf(&b, "  <%s>%d</%s>\n", k, v, k) }
+	b.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<header>")
+	field := func(k string, v int) { fmt.Fprintf(&b, "<%s>%d</%s>", k, v, k) }
 	field("version", 1)
 	field("task", task)
-	field("priority", 1)
+	field("priority", 16)
 	for _, p := range []struct {
 		pre string
 		t   time.Time
@@ -175,9 +239,9 @@ func Header(task int, begin, end time.Time, dataSize, frames int) []byte {
 	}
 	field("indefinite", 0)
 	field("dataSize", dataSize)
-	field("loopStartFrame", 0)
-	field("loopEndFrame", frames)
-	b.WriteString("</bgm>\n")
+	field("loopStartFrame", loopStart)
+	field("loopEndFrame", loopEnd)
+	b.WriteString("</header>\n")
 	s := b.String()
 	for len(s) < 0xF0 {
 		s += " "

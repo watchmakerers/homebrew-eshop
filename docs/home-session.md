@@ -15,14 +15,16 @@ happened.
 
 ## 1. Music test (5 minutes)
 
-1. In GodMode9: `SDCARD` → `Nintendo 3DS` → (long ID) → (long ID) → `extdata` → `00000000`. Find the eShop's
-   folder (probably `00000209` on a Japanese 3DS; it may already hold `boss_bgm1` files from before 2024).
-   **Tell Claude which folder it was and what files were in it.**
-2. Copy `boss_bgm1`, `boss_xml1`, `boss_bgm2`, `boss_xml2` from `~/homebrew-eshop/bgm/out` into it.
+Extdata on the SD card is encrypted per console, so the files go in through a JKSV backup instead:
+
+1. JKSV → Extra Data → Nintendo eShop: back it up once (done 2026-11-23: it held Nintendo's last `boss_bgm1`/
+   `boss_xml1`, now also in `bgm/archive/extdata`). Start ftpd and tell Claude the address.
+2. Claude puts `boss_bgm1`, `boss_xml1`, `boss_bgm2`, `boss_xml2` in a new backup folder `homebrew-bgm`
+   (`JKSV/ExtData/Nintendo eShop/homebrew-bgm`). In JKSV, restore that folder.
 3. Open the eShop (any date from November 1 to December 31). You should hear the December 2015 track.
 4. To hear the next season early, set the 3DS clock to January (and back afterwards).
 
-If it doesn't play: tell Claude, and if possible copy the folder's files back to the PC.
+If it doesn't play: tell Claude. Restoring the dated backup folder puts Nintendo's track back.
 
 ## 2. Install test (10 minutes)
 

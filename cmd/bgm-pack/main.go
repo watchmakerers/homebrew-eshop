@@ -53,7 +53,7 @@ func main() {
 			write(fmt.Sprintf("BGM%d.boss", n), f)
 		}
 		fmt.Printf("slot %d: %-28s %s -> %s  (%d KB, %.0fs)\n", n, w.Season.Name,
-			w.Begin.Format("2006-01-02"), w.End.Format("2006-01-02 15:04:05"), len(t.Audio)/1024, float64(t.Frames)/44100)
+			w.Begin.Format("2006-01-02"), w.End.Format("2006-01-02 15:04:05"), len(t.Audio)/1024, float64(t.Frames)/bgm.Rate)
 	}
 	fmt.Printf("\nCopy boss_bgm1, boss_xml1, boss_bgm2 and boss_xml2 from %s into the eShop's extdata.\n", *out)
 }

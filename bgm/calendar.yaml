@@ -1,10 +1,11 @@
 # Seasonal eShop music. Each season starts on its MM-DD and lasts until the next one starts (wrapping
 # around the year). bgm-pack puts the season playing on -date in slot 1 and the next one in slot 2.
-bitrate: 64k
+# loop: [start, end] seconds in the source file; these rips hold the loop twice, and one loop is what fits in the
+# 900 KB the eShop's own files use. The points were found by self-correlation (0.97+ match at the seam).
 seasons:
-  - {name: Winter (January 2016),  start: "01-01", file: "ost/21. January 2016 (3DS & Wii U).mp3"}
-  - {name: Spring (May 2016),      start: "04-01", file: "ost/22. May 2016 (3DS & Wii U).mp3"}
-  - {name: June (June 2015),       start: "06-01", file: "ost/18. June 2015 (3DS & Wii U).mp3"}
-  - {name: Summer (July 2014),     start: "07-01", file: "ost/16. July 2014 (3DS & Wii U).mp3"}
-  - {name: Fall (September 2015),  start: "09-01", file: "ost/19. September 2015 (3DS & Wii U).mp3"}
-  - {name: Holiday (December 2015), start: "11-01", file: "ost/20. December 2015 (3DS & Wii U).mp3"}
+  - {name: Winter (January 2016),  start: "01-01", file: "ost/21. January 2016 (3DS & Wii U).mp3", loop: [20.0, 84.46453]}
+  - {name: Spring (May 2016),      start: "04-01", file: "ost/22. May 2016 (3DS & Wii U).mp3", loop: [7.0, 83.15344]}
+  - {name: June (June 2015),       start: "06-01", file: "ost/18. June 2015 (3DS & Wii U).mp3", loop: [3.0, 92.99953]}
+  - {name: Summer (July 2014),     start: "07-01", file: "ost/16. July 2014 (3DS & Wii U).mp3", loop: [7.0, 93.07525]}
+  - {name: Fall (September 2015),  start: "09-01", file: "ost/19. September 2015 (3DS & Wii U).mp3", loop: [5.0, 91.70850]}
+  - {name: Holiday (December 2015), start: "11-01", file: "ost/20. December 2015 (3DS & Wii U).mp3", loop: [5.0, 94.57169]}
