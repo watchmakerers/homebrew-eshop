@@ -152,6 +152,20 @@ func (s *Shop) title(samuraiHost string, id int) *stubReply {
 // ecInfo tells the eShop what it would download: title ID, version and size.
 func (s *Shop) ecInfo(id int) *stubReply {
 	t := s.find(id)
+	if at := s.archiveTitle(int64(id)); t == nil && at != nil {
+		if owned := s.ownedBackup(at); owned != nil {
+			t = owned
+		} else {
+			// The page asks for this even though the title can't be bought (online_prices says
+			// sales_termination); without a reply it shows 007-2404. The archive has no 3DS title IDs, so this is a
+			// placeholder in an unused range that can't match an installed game.
+			return jsonReply(fmt.Sprintf("ninja ec_info %d (archive: %s, not sold)", id, at.Name), map[string]any{"title_ec_info": map[string]any{
+				"title_id":      fmt.Sprintf("%016X", archivePlaceholderTID(id)),
+				"title_version": 0,
+				"content_size":  0,
+			}})
+		}
+	}
 	if t == nil {
 		return nil
 	}
@@ -166,6 +180,12 @@ func (s *Shop) ecInfo(id int) *stubReply {
 		"title_version": version,
 		"content_size":  size,
 	}})
+}
+
+// archivePlaceholderTID is a stand-in 3DS title ID for an archived title (unique ID 0xF8000-0xFFFFF, a range no
+// published title uses).
+func archivePlaceholderTID(id int) uint64 {
+	return 0x0004000000000000 | uint64(0xF8000|id&0x7FFF)<<8
 }
 
 // onlinePrices prices every requested title: all free. The ids come as one comma-separated title[] value.
