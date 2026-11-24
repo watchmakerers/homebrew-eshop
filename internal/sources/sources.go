@@ -38,6 +38,8 @@ func New(s config.Source, opt Options) (catalog.Source, error) {
 		return &Local{base: base, Dir: s.Path}, nil
 	case "backups":
 		return &Local{base: base, Dir: s.Path, Backups: true}, nil
+	case "web":
+		return &Web{base: base, URL: s.URL, Depth: s.Depth, Backups: s.Backups, client: opt.Client}, nil
 	}
 	return nil, fmt.Errorf("source %s: unknown type %q", s.Name, s.Type)
 }

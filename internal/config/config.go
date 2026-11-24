@@ -26,11 +26,11 @@ type Config struct {
 // Source is one entry under `sources:`. Which fields apply depends on Type.
 type Source struct {
 	Name     string `yaml:"name"`
-	Type     string `yaml:"type"` // unistore | github | local | backups
+	Type     string `yaml:"type"` // unistore | github | local | backups | web
 	Priority int    `yaml:"priority"`
 	Enabled  *bool  `yaml:"enabled"` // default true
 
-	URL string `yaml:"url"` // unistore
+	URL string `yaml:"url"` // unistore; web: the page whose .cia links to list
 	// unistore, optional: Universal-DB's full.json (or anything shaped like it), for icon and banner image
 	// links, which .unistore files don't have (their icons are packed in a 3DS texture sheet).
 	MetaURL string `yaml:"meta_url"`
@@ -39,6 +39,11 @@ type Source struct {
 	AssetPattern string `yaml:"asset_pattern"` // github: glob for the release asset, default *.cia
 
 	Path string `yaml:"path"` // local, backups: folder of .cia files
+
+	// web only: Depth follows links to sub-folders below url that many levels (default 0, just the page);
+	// Backups marks the CIAs as your own dumps of games you own, like a "backups" folder.
+	Depth   int  `yaml:"depth"`
+	Backups bool `yaml:"backups"`
 
 	// github only: metadata GitHub doesn't have. Title defaults to the repo name.
 	TitleID     string   `yaml:"title_id"` // hex, e.g. 000400000D5C0D00
@@ -105,7 +110,7 @@ func (c *Config) validate() error {
 		seen[s.Name] = true
 		var missing string
 		switch s.Type {
-		case "unistore":
+		case "unistore", "web":
 			if s.URL == "" {
 				missing = "url"
 			}
@@ -123,7 +128,7 @@ func (c *Config) validate() error {
 				missing = "path"
 			}
 		default:
-			return fmt.Errorf("%s: unknown type %q (want unistore, github, local or backups)", where, s.Type)
+			return fmt.Errorf("%s: unknown type %q (want unistore, github, local, backups or web)", where, s.Type)
 		}
 		if missing != "" {
 			return fmt.Errorf("%s: type %s needs %s", where, s.Type, missing)

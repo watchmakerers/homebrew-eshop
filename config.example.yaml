@@ -42,3 +42,15 @@ sources:
   #   type: backups
   #   path: ./backups
   #   priority: 40
+
+  # .cia files linked from a web page, e.g. your home server's directory listing (nginx/Apache/Caddy autoindex,
+  # a NAS share). Each CIA's title ID and name are read from the file with Range requests, without downloading
+  # it; it's downloaded when the 3DS installs it. depth: follow sub-folders that many levels. backups: true
+  # marks them as your own dumps (matched to the archive, shown under My Backups) — keep such a server on your
+  # LAN/Tailscale only.
+  # - name: Home server backups
+  #   type: web
+  #   url: http://homeserver.local/3ds/
+  #   depth: 1
+  #   backups: true
+  #   priority: 40
