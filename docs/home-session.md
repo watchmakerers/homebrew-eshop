@@ -19,8 +19,8 @@ happened.
    folder (probably `00000209` on a Japanese 3DS; it may already hold `boss_bgm1` files from before 2024).
    **Tell Claude which folder it was and what files were in it.**
 2. Copy `boss_bgm1`, `boss_xml1`, `boss_bgm2`, `boss_xml2` from `~/homebrew-eshop/bgm/out` into it.
-3. Set the 3DS clock to a December date and open the eShop. You should hear the December 2015 track.
-4. Set the clock back afterwards.
+3. Open the eShop (any date from November 1 to December 31). You should hear the December 2015 track.
+4. To hear the next season early, set the 3DS clock to January (and back afterwards).
 
 If it doesn't play: tell Claude, and if possible copy the folder's files back to the PC.
 
