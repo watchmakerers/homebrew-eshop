@@ -83,15 +83,22 @@ func (h *Handler) ias(w http.ResponseWriter, r *http.Request) {
 	messageID := field(body, "MessageId")
 	region := orDefault(field(body, "Region"), "USA")
 	country := orDefault(field(body, "Country"), "US")
+	consoleID, _ := strconv.ParseUint(uniqueID, 10, 64)
 	devID := deviceIDFromUnique(uniqueID)
 
 	switch action {
 	case "GenerateKeyPair":
-		name := fmt.Sprintf("NG%08X", devID)
+		// The device cert's Key Name must be "TWxxxxxxxx-<16 hex of the console's 64-bit id>" (GBATEK): the
+		// console rejects the import (nvSetDeviceKeyPairIntermediate, -4047) unless the 16-hex field at name
+		// offset 0xB equals its own id (burned in the TWL CPU; it sends it as UniqueId). The 8-hex "xxxxxxxx"
+		// is a per-console value used for tickets, not checked at import; we derive it deterministically.
+		tikID := binary.BigEndian.Uint32(placeholder(4, "tik", uniqueID))
+		name := fmt.Sprintf("TW%08x-%016x", tikID, consoleID)
 		priv := placeholder(0x1E, "devkey", uniqueID)
-		devCert := eccCert("Root-CA00000001-MS00000002", name, 0x00000002,
+		// Retail chain: device cert signed by MS00000008 (ECC), MS by CA00000001, CA by Root.
+		devCert := eccCert("Root-CA00000001-MS00000008", name, 0x00000002,
 			placeholder(0x3C, "devpub", uniqueID), placeholder(0x3C, "devsig", uniqueID))
-		msCert := eccCert("Root-CA00000001", "MS00000002", 0x00000002,
+		msCert := eccCert("Root-CA00000001", "MS00000008", 0x00000002,
 			placeholder(0x3C, "mspub"), placeholder(0x3C, "mssig"))
 		caCert := eccCert("Root", "CA00000001", 0x00000001,
 			placeholder(0x3C, "capub"), placeholder(0x3C, "casig"))

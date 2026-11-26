@@ -45,6 +45,17 @@ func TestGenerateKeyPair(t *testing.T) {
 	if got := decodeLen(t, body, "DeviceCert"); got != 0x180 {
 		t.Errorf("DeviceCert %d bytes, want 0x180", got)
 	}
+	// The device cert's Key Name (offset 0xC4) must be "TW<8hex>-<16hex console id>", with the 16-hex
+	// equal to the UniqueId (585493622980907302 = 0x0820175918089126). The console checks this at import.
+	cert := decodeField(t, body, "DeviceCert")
+	name := string(cert[0xC4 : 0xC4+0x40])
+	name = strings.TrimRight(name, "\x00")
+	if !strings.HasPrefix(name, "TW") || !strings.HasSuffix(name, "-0820175918089126") {
+		t.Errorf("device cert name %q: want TW<8hex>-0820175918089126", name)
+	}
+	if issuer := strings.TrimRight(string(cert[0x80:0xC0]), "\x00"); issuer != "Root-CA00000001-MS00000008" {
+		t.Errorf("device cert issuer %q", issuer)
+	}
 	if n := strings.Count(body, "<CertChain>"); n != 2 {
 		t.Errorf("%d CertChain elements, want 2", n)
 	}
@@ -58,11 +69,11 @@ func TestGenerateKeyPair(t *testing.T) {
 	}
 }
 
-func decodeLen(t *testing.T, body, tag string) int {
+func decodeField(t *testing.T, body, tag string) []byte {
 	t.Helper()
-	open, close := "<"+tag+">", "</"+tag+">"
+	open, closeTag := "<"+tag+">", "</"+tag+">"
 	i := strings.Index(body, open)
-	j := strings.Index(body, close)
+	j := strings.Index(body, closeTag)
 	if i < 0 || j < 0 {
 		t.Fatalf("no %s", tag)
 	}
@@ -70,5 +81,9 @@ func decodeLen(t *testing.T, body, tag string) int {
 	if err != nil {
 		t.Fatalf("%s base64: %v", tag, err)
 	}
-	return len(b)
+	return b
+}
+
+func decodeLen(t *testing.T, body, tag string) int {
+	return len(decodeField(t, body, tag))
 }
