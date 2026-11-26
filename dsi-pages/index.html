@@ -12,10 +12,13 @@ function kongCall(what) {
   try {
     var k = new Kong;
     try { k.SetTransition(0, 0); } catch (e) {} // the built-in pages say SetTransition must be called first
-    k[what]();
-    msg = "called Kong." + what;
+    setTimeout(function () { try { k[what](); } catch (e) { report("Kong." + what + " (delayed) failed: " + e); } }, 300);
+    msg = "calling Kong." + what + " in 300 ms";
   } catch (e) { msg = "Kong." + what + " failed: " + e; }
   document.getElementById("kongerr").innerHTML = msg;
+  report(msg);
+}
+function report(msg) {
   try { var x = new XMLHttpRequest(); x.open("POST", "/report", true); x.send(msg); } catch (e) {}
 }
 </script>
@@ -39,6 +42,14 @@ function describe(obj, label, depth) {
   }
 }
 
+function readFields(o, list, label) {
+  var got = [];
+  for (var i = 0; i < list.length; i++) {
+    var v; try { v = o[list[i]]; } catch (e) { v = "error"; }
+    if (v !== undefined) got.push(list[i] + "=" + v);
+  }
+  line(label + ": " + got.join(" "));
+}
 var ec = null;
 try { line("typeof Kong: " + typeof Kong); } catch (e) { line("Kong: " + e); }
 try { ec = new ECommerceInterface(); line("new ECommerceInterface(): ok"); } catch (e) { line("new ECommerceInterface() failed: " + e); }
@@ -72,57 +83,60 @@ if (ec) {
     progress: ["status", "operation", "description", "phase", "isCancelRequested", "totalSize", "downloadedSize",
       "errCode", "errInfo"]
   };
-  function readFields(o, list, label) {
-    var got = [];
-    for (var i = 0; i < list.length; i++) {
-      var v; try { v = o[list[i]]; } catch (e) { v = "error"; }
-      if (v !== undefined) got.push(list[i] + "=" + v);
-    }
-    line(label + ": " + got.join(" "));
-  }
   var di = ec.getDeviceInfo();
   readFields(di, fields.info, "deviceInfo");
   readFields(ec.getProgress(), fields.progress, "progress (idle)");
   try { var lg = ec.getLog(); line("getLog(): " + String(lg).substring(0, 600)); } catch (e) { line("getLog threw " + e); }
 
-  line("--- setWebSvcUrls + checkDeviceStatus");
-  var base = "https://ecs.t.shop.nintendowifi.net/ecs/services/ECommerceSOAP";
-  var ias = "https://ias.t.shop.nintendowifi.net/ias/services/IdentityAuthenticationSOAP";
-  try { line("setWebSvcUrls -> " + ec.setWebSvcUrls(base, ias)); } catch (e) { line("setWebSvcUrls threw " + e); }
-  var op;
-  try { op = ec.checkDeviceStatus(); line("checkDeviceStatus() -> " + op); } catch (e) { line("checkDeviceStatus threw " + e); }
+  line("--- setWebSvcUrls");
+  var ecsUrl = "https://ecs.t.shop.nintendowifi.net/ecs/services/ECommerceSOAP";
+  var iasUrl = "https://ias.t.shop.nintendowifi.net/ias/services/IdentityAuthenticationSOAP";
+  try { line("setWebSvcUrls -> " + ec.setWebSvcUrls(ecsUrl, iasUrl)); } catch (e) { line("setWebSvcUrls threw " + e); }
 }
 
-var polls = 0;
-function send(final) {
-  try {
-    var x = new XMLHttpRequest();
-    x.open("POST", "/report", true);
-    x.setRequestHeader("Content-Type", "text/plain");
-    x.send(out.join("\n"));
-  } catch (e) {
-    var img = new Image(); img.src = "/report?" + encodeURIComponent(out.join("\n").substring(0, 1500));
-  }
+function send() {
+  report(out.join("\n"));
   out = [];
 }
-function poll() {
-  polls++;
-  var p = ec.getProgress();
-  readFields(p, fields.progress, "progress #" + polls);
-  var done = false;
-  try { done = p.status != -4005 && p.status !== undefined && (p.status <= 0 || polls > 20); } catch (e) { done = true; }
-  if (polls > 30 || (polls > 1 && done)) {
-    try { line("getLog(): " + String(ec.getLog()).substring(0, 1500)); } catch (e) {}
-    readFields(ec.getDeviceInfo(), fields.info, "deviceInfo after");
-    show(); send(true);
+
+// Runs EC operations one after another; each returns at once and is finished when getProgress().status
+// stops being the "in progress" code. The result of each is reported.
+var steps = [];
+if (ec && ec.getDeviceInfo().deviceId == 0) {
+  steps.push(["generateKeyPair", function () { return ec.generateKeyPair(); }]);
+  steps.push(["confirmKeyPair", function () { return ec.confirmKeyPair(); }]);
+}
+steps.push(["checkDeviceStatus", function () { return ec.checkDeviceStatus(); }]);
+
+function runStep(i) {
+  if (!ec || i >= steps.length) {
+    try { line("getLog(): " + String(ec.getLog()).substring(0, 3000)); } catch (e) {}
+    try { readFields(ec.getDeviceInfo(), fields.info, "deviceInfo at end"); } catch (e) {}
+    line("=== done");
+    show(); send();
     return;
   }
-  setTimeout(poll, 1000);
+  var name = steps[i][0], r;
+  try { r = steps[i][1](); line(name + "() returned " + r); } catch (e) { line(name + "() threw " + e); }
+  var polls = 0, last = "";
+  function poll() {
+    polls++;
+    var p = ec.getProgress(), st;
+    try { st = p.status; } catch (e) { st = "?"; }
+    var desc = "status=" + st + " phase=" + p.phase + " op=" + p.operation + " err=" + p.errCode + " " + (p.errInfo || "");
+    if (desc != last) { line("  " + name + " #" + polls + ": " + desc); last = desc; show(); send(); }
+    if (polls < 60 && (st == -4005 || st == 1 || p.operation != "not busy")) { setTimeout(poll, 500); return; }
+    readFields(ec.getDeviceInfo(), ["deviceId", "isNeedRegistration", "registrationStatus", "deviceCode"], "  after " + name);
+    show(); send();
+    setTimeout(function () { runStep(i + 1); }, 300);
+  }
+  setTimeout(poll, 300);
 }
+
 function show() {
   document.getElementById("info").innerHTML += out.join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;") + "\n";
 }
-show(); send(false);
-if (ec) setTimeout(poll, 500);
+show(); send();
+setTimeout(function () { runStep(0); }, 500);
 </script>
 </body></html>
