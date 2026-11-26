@@ -118,8 +118,32 @@ func (ca *CA) Modulus() []byte {
 	return out
 }
 
+// ShopSANs returns the DNS names a shop server certificate should cover: the specific host plus every
+// Nintendo shop/WFC hostname and matching wildcards, so one cert validates against any of them (the DSi
+// sends no SNI, so we can't choose per connection).
+func ShopSANs(host string) []string {
+	names := []string{
+		host,
+		"*.t.shop.nintendowifi.net", "*.shop.nintendowifi.net", "*.nintendowifi.net",
+		"*.t.shop.nintendo.net", "*.shop.nintendo.net",
+		"nas.nintendowifi.net", "conntest.nintendowifi.net",
+		"tss.t.shop.nintendowifi.net",
+		"ias.t.shop.nintendowifi.net", "ecs.t.shop.nintendowifi.net",
+		"cas.t.shop.nintendowifi.net", "ccs.t.shop.nintendowifi.net", "ucs.t.shop.nintendowifi.net",
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range names {
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // Leaf returns a server certificate for host signed by the CA, creating and caching it (in memory and as
-// dir/leaf/<host>.der + .key) on first use.
+// dir/leaf/<host>.der + .key) on first use. The cert covers every shop hostname (see ShopSANs).
 func (ca *CA) Leaf(host string) (*tls.Certificate, error) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
@@ -145,10 +169,13 @@ func (ca *CA) Leaf(host string) (*tls.Certificate, error) {
 		if err != nil {
 			return nil, err
 		}
+		// The DSi browser's TLS hello carries no SNI, so the server can't tell which host a connection is
+		// for and we can't reliably pick a per-host cert. Put every shop hostname (and wildcards) in one
+		// cert's SAN list, so it validates whatever host the console connects to.
 		tmpl := &x509.Certificate{
 			SerialNumber:       serial,
 			Subject:            pkix.Name{Country: []string{"US"}, Organization: []string{"homebrew-eshop"}, CommonName: host},
-			DNSNames:           []string{host},
+			DNSNames:           ShopSANs(host),
 			NotBefore:          time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC),
 			NotAfter:           time.Date(2049, 12, 31, 0, 0, 0, 0, time.UTC),
 			KeyUsage:           x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
