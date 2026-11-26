@@ -2,8 +2,25 @@
 <title>homebrew-eshop</title></head>
 <body bgcolor="#ffffff" style="font-family:sans-serif;font-size:12px">
 <h3>homebrew-eshop DSi Shop</h3>
+<p><button onclick="kongCall('ReturnToMenu')" style="font-size:14px;padding:6px">Return to DSi Menu</button>
+<button onclick="kongCall('Restart')" style="font-size:14px;padding:6px">Restart shop</button>
+<span id="kongerr" style="color:#c00"></span></p>
+<script type="text/javascript">
+// Kong is the shop's own page helper (its built-in error pages use new Kong + ReturnToMenu()).
+function kongCall(what) {
+  var msg;
+  try {
+    var k = new Kong;
+    try { k.SetTransition(0, 0); } catch (e) {} // the built-in pages say SetTransition must be called first
+    k[what]();
+    msg = "called Kong." + what;
+  } catch (e) { msg = "Kong." + what + " failed: " + e; }
+  document.getElementById("kongerr").innerHTML = msg;
+  try { var x = new XMLHttpRequest(); x.open("POST", "/report", true); x.send(msg); } catch (e) {}
+}
+</script>
 <p>Probing the shop's ECommerceInterface...</p>
-<pre id="info" style="font-size:10px">working...</pre>
+<pre id="info" style="font-size:10px"></pre>
 <script type="text/javascript">
 // Probe page: lists what ECommerceInterface offers and reads the getters that don't talk to a server.
 // Everything is posted to /report, which the PC logs.
@@ -23,6 +40,7 @@ function describe(obj, label, depth) {
 }
 
 var ec = null;
+try { line("typeof Kong: " + typeof Kong); } catch (e) { line("Kong: " + e); }
 try { ec = new ECommerceInterface(); line("new ECommerceInterface(): ok"); } catch (e) { line("new ECommerceInterface() failed: " + e); }
 if (ec) {
   line("--- for-in over the object");
@@ -44,26 +62,67 @@ if (ec) {
   }
   line(have.join(" "));
   line("--- read-only getters");
-  var getters = ["getVersion", "getDeviceInfo", "getProgress", "getWebSvcUrls", "getCachedBalance"];
-  for (var j = 0; j < getters.length; j++) {
-    var g = getters[j];
-    if (typeof ec[g] != "function") continue;
-    try {
-      var r = ec[g]();
-      line(g + "() -> " + typeof r + " " + String(r).substring(0, 200));
-      if (r && typeof r == "object") describe(r, g + "()", 1);
-    } catch (e) { line(g + "() threw " + e); }
+  line("getVersion() = " + ec.getVersion());
+  var fields = {
+    info: ["deviceId", "serial", "country", "region", "language", "accountId", "deviceCode", "accountNumber",
+      "isParentalControlEnabled", "userAge", "parentalControlOgn", "parentalControlAge", "isNeedTicketSync",
+      "isNeedRegistration", "registrationStatus", "lastTicketSyncTime", "ticketSyncTime", "totalBlocks",
+      "usedBlocks", "freeBlocks", "freeChannelAppCount", "maxUserFileSize", "titleId", "wirelessMACAddr",
+      "bluetoothMACAddr", "titleVersion", "blockSize", "usedUserInodes", "maxUserInodes", "deviceType", "deviceToken"],
+    progress: ["status", "operation", "description", "phase", "isCancelRequested", "totalSize", "downloadedSize",
+      "errCode", "errInfo"]
+  };
+  function readFields(o, list, label) {
+    var got = [];
+    for (var i = 0; i < list.length; i++) {
+      var v; try { v = o[list[i]]; } catch (e) { v = "error"; }
+      if (v !== undefined) got.push(list[i] + "=" + v);
+    }
+    line(label + ": " + got.join(" "));
   }
+  var di = ec.getDeviceInfo();
+  readFields(di, fields.info, "deviceInfo");
+  readFields(ec.getProgress(), fields.progress, "progress (idle)");
+  try { var lg = ec.getLog(); line("getLog(): " + String(lg).substring(0, 600)); } catch (e) { line("getLog threw " + e); }
+
+  line("--- setWebSvcUrls + checkDeviceStatus");
+  var base = "https://ecs.t.shop.nintendowifi.net/ecs/services/ECommerceSOAP";
+  var ias = "https://ias.t.shop.nintendowifi.net/ias/services/IdentityAuthenticationSOAP";
+  try { line("setWebSvcUrls -> " + ec.setWebSvcUrls(base, ias)); } catch (e) { line("setWebSvcUrls threw " + e); }
+  var op;
+  try { op = ec.checkDeviceStatus(); line("checkDeviceStatus() -> " + op); } catch (e) { line("checkDeviceStatus threw " + e); }
 }
 
-document.getElementById("info").innerHTML = out.join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;");
-try {
-  var x = new XMLHttpRequest();
-  x.open("POST", "/report", true);
-  x.setRequestHeader("Content-Type", "text/plain");
-  x.send(out.join("\n"));
-} catch (e) {
-  var img = new Image(); img.src = "/report?" + encodeURIComponent(out.join("\n").substring(0, 1500));
+var polls = 0;
+function send(final) {
+  try {
+    var x = new XMLHttpRequest();
+    x.open("POST", "/report", true);
+    x.setRequestHeader("Content-Type", "text/plain");
+    x.send(out.join("\n"));
+  } catch (e) {
+    var img = new Image(); img.src = "/report?" + encodeURIComponent(out.join("\n").substring(0, 1500));
+  }
+  out = [];
 }
+function poll() {
+  polls++;
+  var p = ec.getProgress();
+  readFields(p, fields.progress, "progress #" + polls);
+  var done = false;
+  try { done = p.status != -4005 && p.status !== undefined && (p.status <= 0 || polls > 20); } catch (e) { done = true; }
+  if (polls > 30 || (polls > 1 && done)) {
+    try { line("getLog(): " + String(ec.getLog()).substring(0, 1500)); } catch (e) {}
+    readFields(ec.getDeviceInfo(), fields.info, "deviceInfo after");
+    show(); send(true);
+    return;
+  }
+  setTimeout(poll, 1000);
+}
+function show() {
+  document.getElementById("info").innerHTML += out.join("\n").replace(/&/g, "&amp;").replace(/</g, "&lt;") + "\n";
+}
+show(); send(false);
+if (ec) setTimeout(poll, 500);
 </script>
 </body></html>
