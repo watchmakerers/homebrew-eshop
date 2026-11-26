@@ -1,7 +1,9 @@
 package dsi
 
 import (
+	"bytes"
 	"encoding/base64"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -55,6 +57,17 @@ func TestGenerateKeyPair(t *testing.T) {
 	}
 	if issuer := strings.TrimRight(string(cert[0x80:0xC0]), "\x00"); issuer != "Root-CA00000001-MS00000008" {
 		t.Errorf("device cert issuer %q", issuer)
+	}
+	// The cert public key (0x108, 60 bytes = X||Y) must be d*G for the returned DeviceKey d, and on-curve.
+	priv := decodeField(t, body, "DeviceKey")
+	d := new(big.Int).SetBytes(priv)
+	want := scalarMul(d, generator())
+	pubX, pubY := cert[0x108:0x108+30], cert[0x108+30:0x108+60]
+	if want.inf || !bytes.Equal(want.x.bytes(), pubX) || !bytes.Equal(want.y.bytes(), pubY) {
+		t.Error("cert public key != d*G for the returned private key")
+	}
+	if !(point{x: gfFromBytes(pubX), y: gfFromBytes(pubY)}).onCurve() {
+		t.Error("cert public key not on curve")
 	}
 	if n := strings.Count(body, "<CertChain>"); n != 2 {
 		t.Errorf("%d CertChain elements, want 2", n)

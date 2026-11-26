@@ -2,6 +2,7 @@ package dsi
 
 import (
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -94,10 +96,21 @@ func (h *Handler) ias(w http.ResponseWriter, r *http.Request) {
 		// is a per-console value used for tickets, not checked at import; we derive it deterministically.
 		tikID := binary.BigEndian.Uint32(placeholder(4, "tik", uniqueID))
 		name := fmt.Sprintf("TW%08x-%016x", tikID, consoleID)
-		priv := placeholder(0x1E, "devkey", uniqueID)
+		// Real sect233r1 key pair: the console signs its ConfirmKeyPair (and every later EC request) with the
+		// private key, so a placeholder key fails at the next step (-4009). The public point goes in the cert;
+		// the private scalar is returned as DeviceKey. Derived deterministically from the console id so a retry
+		// gets the same key (the real server remembers each device's key too).
+		dk, err := deviceKey(consoleID)
+		if err != nil {
+			http.Error(w, "keygen", http.StatusInternalServerError)
+			h.log(r, 500, "(ias GenerateKeyPair keygen: "+err.Error()+")")
+			return
+		}
+		priv := dk.Private
+		pub := append(append([]byte(nil), dk.PublicX...), dk.PublicY...) // X||Y, 60 bytes
 		// Retail chain: device cert signed by MS00000008 (ECC), MS by CA00000001, CA by Root.
 		devCert := eccCert("Root-CA00000001-MS00000008", name, 0x00000002,
-			placeholder(0x3C, "devpub", uniqueID), placeholder(0x3C, "devsig", uniqueID))
+			pub, placeholder(0x3C, "devsig", uniqueID))
 		msCert := eccCert("Root-CA00000001", "MS00000008", 0x00000002,
 			placeholder(0x3C, "mspub"), placeholder(0x3C, "mssig"))
 		caCert := eccCert("Root", "CA00000001", 0x00000001,
@@ -119,6 +132,47 @@ func (h *Handler) ias(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Error(w, "not implemented", http.StatusNotImplemented)
 	h.log(r, http.StatusNotImplemented, "(ias "+action+" not implemented)")
+}
+
+// deviceKeyCache memoizes the sect233r1 key pair per console id (scalar mul is slow, and a retry must get
+// the same key).
+var deviceKeyCache sync.Map // consoleID -> *DeviceKeyPair
+
+// deviceKey returns a stable sect233r1 key pair for a console, derived deterministically from its id so the
+// server reproduces the same device key across requests without persisting it.
+func deviceKey(consoleID uint64) (*DeviceKeyPair, error) {
+	if v, ok := deviceKeyCache.Load(consoleID); ok {
+		return v.(*DeviceKeyPair), nil
+	}
+	seed := sha256.Sum256(binary.BigEndian.AppendUint64([]byte("dsi-device-key\x00"), consoleID))
+	kp, err := GenerateDeviceKey(&hashReader{seed: seed})
+	if err != nil {
+		return nil, err
+	}
+	deviceKeyCache.Store(consoleID, kp)
+	return kp, nil
+}
+
+// hashReader is a deterministic byte stream: SHA-256(seed || counter), block after block.
+type hashReader struct {
+	seed [32]byte
+	ctr  uint64
+	buf  []byte
+}
+
+func (h *hashReader) Read(p []byte) (int, error) {
+	n := 0
+	for n < len(p) {
+		if len(h.buf) == 0 {
+			blk := sha256.Sum256(binary.BigEndian.AppendUint64(h.seed[:], h.ctr))
+			h.ctr++
+			h.buf = blk[:]
+		}
+		c := copy(p[n:], h.buf)
+		h.buf = h.buf[c:]
+		n += c
+	}
+	return n, nil
 }
 
 // ecs handles an ECS (ECommerce) SOAP POST. After registration the Shop calls CheckDeviceStatus here;
