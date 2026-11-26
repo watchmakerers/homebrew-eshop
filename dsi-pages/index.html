@@ -117,20 +117,25 @@ function runStep(i) {
     return;
   }
   var name = steps[i][0], r;
-  try { r = steps[i][1](); line(name + "() returned " + r); } catch (e) { line(name + "() threw " + e); }
-  var polls = 0, last = "";
+  try { r = steps[i][1](); line(name + "() returned " + r); show(); send(); } catch (e) { line(name + "() threw " + e); show(); send(); }
+  // Poll fast and send the EC log on every tick: when an op fails the Shop jumps to its error page, which
+  // destroys this script, so the last log we managed to POST is the evidence. Sending every tick beats that.
+  var polls = 0, lastLog = "";
   function poll() {
     polls++;
-    var p = ec.getProgress(), st;
-    try { st = p.status; } catch (e) { st = "?"; }
-    var desc = "status=" + st + " phase=" + p.phase + " op=" + p.operation + " err=" + p.errCode + " " + (p.errInfo || "");
-    if (desc != last) { line("  " + name + " #" + polls + ": " + desc); last = desc; show(); send(); }
-    if (polls < 60 && (st == -4005 || st == 1 || p.operation != "not busy")) { setTimeout(poll, 500); return; }
-    readFields(ec.getDeviceInfo(), ["deviceId", "isNeedRegistration", "registrationStatus", "deviceCode"], "  after " + name);
-    show(); send();
+    var st, desc, log;
+    try { var p = ec.getProgress(); st = p.status; desc = "status=" + st + " phase=" + p.phase + " op=" + p.operation + " err=" + p.errCode + " " + (p.errInfo || ""); } catch (e) { desc = "getProgress threw " + e; st = 0; }
+    try { log = String(ec.getLog()); } catch (e) { log = "getLog threw " + e; }
+    out = [name + " #" + polls + ": " + desc];
+    if (log != lastLog) { out.push(log.substring(Math.max(0, log.length - 1600))); lastLog = log; }
+    send(); // POST immediately, every tick
+    if (polls < 40 && (st == -4005 || st == 1 || (desc.indexOf("not busy") < 0 && desc.indexOf("threw") < 0))) { setTimeout(poll, 200); return; }
+    out = [];
+    readFields(ec.getDeviceInfo(), ["deviceId", "isNeedRegistration", "registrationStatus", "deviceCode"], "after " + name);
+    send();
     setTimeout(function () { runStep(i + 1); }, 300);
   }
-  setTimeout(poll, 300);
+  setTimeout(poll, 200);
 }
 
 function show() {
