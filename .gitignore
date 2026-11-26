@@ -17,3 +17,4 @@ __pycache__/
 # BOSS (SpotPass) key: dumped from your own console, never committed
 *boss*key*
 *.boss
+/dsi-shop
