@@ -122,14 +122,15 @@ func (ca *CA) Modulus() []byte {
 // Nintendo shop/WFC hostname and matching wildcards, so one cert validates against any of them (the DSi
 // sends no SNI, so we can't choose per connection).
 func ShopSANs(host string) []string {
+	// Explicit hostnames only: the DSi's 2009 SSL library rejects a certificate whose SAN list contains
+	// wildcard (*.) entries (it answered 022e / certificate_unknown even for a host that worked before).
 	names := []string{
 		host,
-		"*.t.shop.nintendowifi.net", "*.shop.nintendowifi.net", "*.nintendowifi.net",
-		"*.t.shop.nintendo.net", "*.shop.nintendo.net",
 		"nas.nintendowifi.net", "conntest.nintendowifi.net",
 		"tss.t.shop.nintendowifi.net",
 		"ias.t.shop.nintendowifi.net", "ecs.t.shop.nintendowifi.net",
 		"cas.t.shop.nintendowifi.net", "ccs.t.shop.nintendowifi.net", "ucs.t.shop.nintendowifi.net",
+		"tss.shop.nintendowifi.net", "ias.shop.nintendowifi.net", "ecs.shop.nintendowifi.net",
 	}
 	seen := map[string]bool{}
 	var out []string
