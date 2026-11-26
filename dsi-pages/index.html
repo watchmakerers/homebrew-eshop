@@ -18,8 +18,23 @@ function kongCall(what) {
   document.getElementById("kongerr").innerHTML = msg;
   report(msg);
 }
+// Report over BOTH channels. The XHR POST (https, same-origin) carries the full text when TLS works. But
+// after GenerateKeyPair the console's HTTPS stops working, so we also beacon over plain http to the conntest
+// host (port 80, no TLS): an <img> GET whose query carries the text, chunked to fit in a URL. The http
+// beacon is the one that survives the post-registration failure.
+var beaconSeq = 0;
 function report(msg) {
   try { var x = new XMLHttpRequest(); x.open("POST", "/report", true); x.send(msg); } catch (e) {}
+  try {
+    var base = "http://conntest.nintendowifi.net/report?";
+    var chunk = 900, n = Math.ceil(msg.length / chunk);
+    for (var i = 0; i < n && i < 8; i++) {
+      beaconSeq++;
+      var part = "b" + beaconSeq + "/" + (i + 1) + "of" + n + ":" + msg.substring(i * chunk, i * chunk + chunk);
+      var img = new Image();
+      img.src = base + encodeURIComponent(part);
+    }
+  } catch (e) {}
 }
 </script>
 <p>Probing the shop's ECommerceInterface...</p>

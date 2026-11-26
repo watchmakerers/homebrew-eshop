@@ -55,6 +55,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		host = hh
 	}
 	switch {
+	case r.URL.Path == "/report":
+		// Debug channel from the probe page, accepted on any host/scheme. After registration the DSi's
+		// HTTPS breaks, so the page beacons here over plain HTTP (conntest host) to get its log out.
+		h.report(w, r)
 	case host == ConntestHost:
 		h.conntest(w, r)
 	case host == NASHost && r.URL.Path == "/ac":
@@ -146,21 +150,25 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func (h *Handler) pages(w http.ResponseWriter, r *http.Request) {
-	// Pages post what they find out to /report (a debugging channel): log the body.
-	if r.URL.Path == "/report" {
-		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-		if r.URL.RawQuery != "" {
-			if q, err := url.QueryUnescape(r.URL.RawQuery); err == nil {
-				body = append([]byte(q+"\n"), body...)
-			}
+// report logs a probe-page beacon: body (POST) and/or query string (HTTP image beacon). A 1x1 GIF is
+// returned so an <img> beacon doesn't error, with no-store so each beacon is a fresh request.
+func (h *Handler) report(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if r.URL.RawQuery != "" {
+		if q, err := url.QueryUnescape(r.URL.RawQuery); err == nil {
+			body = append([]byte(q+"\n"), body...)
 		}
-		file, _ := h.Rec.SaveBody(body)
-		w.WriteHeader(http.StatusNoContent)
-		h.Rec.Record(sniff.Event{Kind: "report", From: r.RemoteAddr, BodyFile: file, BodyLen: len(body), Message: string(body)},
-			fmt.Sprintf("REPORT (%d B, %s)\n%s", len(body), file, indent(string(body))))
-		return
 	}
+	file, _ := h.Rec.SaveBody(body)
+	w.Header().Set("Content-Type", "image/gif")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"))
+	h.Rec.Record(sniff.Event{Kind: "report", From: r.RemoteAddr, BodyFile: file, BodyLen: len(body), Message: string(body)},
+		fmt.Sprintf("REPORT (%d B, %s)\n%s", len(body), file, indent(string(body))))
+}
+
+func (h *Handler) pages(w http.ResponseWriter, r *http.Request) {
 	name := path.Clean("/" + r.URL.Path)
 	if name == "/" || name == "/index_u" {
 		name = "/index.html"
