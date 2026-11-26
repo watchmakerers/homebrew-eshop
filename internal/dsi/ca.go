@@ -176,7 +176,7 @@ func (ca *CA) Leaf(host string) (*tls.Certificate, error) {
 		tmpl := &x509.Certificate{
 			SerialNumber:       serial,
 			Subject:            pkix.Name{Country: []string{"US"}, Organization: []string{"homebrew-eshop"}, CommonName: host},
-			DNSNames:           ShopSANs(host),
+			DNSNames:           []string{host}, // the DSi's SSL rejects multi-SAN certs; one host per cert
 			NotBefore:          time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC),
 			NotAfter:           time.Date(2049, 12, 31, 0, 0, 0, 0, time.UTC),
 			KeyUsage:           x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,

@@ -54,21 +54,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if hh, _, err := net.SplitHostPort(host); err == nil {
 		host = hh
 	}
+	// Route SOAP by URL path, not host, so the probe page can point every service URL (ecs, ias) at the
+	// pages host. The DSi then only ever connects to a handful of hosts one at a time, and each gets the
+	// single-host cert it accepts (it rejects multi-SAN certs, and its TLS hello has no SNI to pick by).
+	urlPath := r.URL.Path
 	switch {
-	case r.URL.Path == "/report":
+	case urlPath == "/report":
 		// Debug channel from the probe page, accepted on any host/scheme. After registration the DSi's
 		// HTTPS breaks, so the page beacons here over plain HTTP (conntest host) to get its log out.
 		h.report(w, r)
+	case strings.Contains(urlPath, "/ias/services/"):
+		h.ias(w, r)
+	case strings.Contains(urlPath, "/ecs/services/"):
+		h.ecs(w, r)
 	case host == ConntestHost:
 		h.conntest(w, r)
-	case host == NASHost && r.URL.Path == "/ac":
+	case host == NASHost && urlPath == "/ac":
 		h.nas(w, r)
-	case host == PagesHost:
-		h.pages(w, r)
 	case service(host) == "ias":
 		h.ias(w, r)
+	case service(host) == "ecs":
+		h.ecs(w, r)
 	default:
-		h.Fallback.ServeHTTP(w, r)
+		h.pages(w, r) // the pages host, and anything else, serves the probe page / files
 	}
 }
 

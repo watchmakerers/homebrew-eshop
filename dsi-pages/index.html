@@ -104,8 +104,10 @@ if (ec) {
   try { var lg = ec.getLog(); line("getLog(): " + String(lg).substring(0, 600)); } catch (e) { line("getLog threw " + e); }
 
   line("--- setWebSvcUrls");
-  var ecsUrl = "https://ecs.t.shop.nintendowifi.net/ecs/services/ECommerceSOAP";
-  var iasUrl = "https://ias.t.shop.nintendowifi.net/ias/services/IdentityAuthenticationSOAP";
+  // Point every service URL at the pages host. The server routes by path (/ias/services, /ecs/services),
+  // so the console only ever connects to one hostname and the single-host cert it accepts always matches.
+  var ecsUrl = "https://tss.t.shop.nintendowifi.net/ecs/services/ECommerceSOAP";
+  var iasUrl = "https://tss.t.shop.nintendowifi.net/ias/services/IdentityAuthenticationSOAP";
   try { line("setWebSvcUrls -> " + ec.setWebSvcUrls(ecsUrl, iasUrl)); } catch (e) { line("setWebSvcUrls threw " + e); }
 }
 

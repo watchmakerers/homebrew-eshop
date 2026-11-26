@@ -114,6 +114,35 @@ func (h *Handler) ias(w http.ResponseWriter, r *http.Request) {
 	h.log(r, http.StatusNotImplemented, "(ias "+action+" not implemented)")
 }
 
+// ecs handles an ECS (ECommerce) SOAP POST. After registration the Shop calls CheckDeviceStatus here;
+// later it will do ListTitles, purchases and ticket delivery. For now this answers the calls we've reached
+// with a minimal successful reply, and logs the rest so we can see what the Shop asks next.
+func (h *Handler) ecs(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	action := strings.Trim(r.Header.Get("SOAPAction"), `"`)
+	if i := strings.LastIndexByte(action, '/'); i >= 0 {
+		action = action[i+1:]
+	}
+	messageID := field(body, "MessageId")
+	devID := deviceIDFromUnique(field(body, "DeviceId"))
+	region := orDefault(field(body, "Region"), "USA")
+	country := orDefault(field(body, "Country"), "US")
+
+	switch action {
+	case "CheckDeviceStatus":
+		fields := []kv{
+			{"ServiceStandbyMode", "false"},
+			{"Balance", ""}, // placeholder; filled when we model points
+		}
+		h.writeSOAP(w, r, "CheckDeviceStatusResponse", "urn:ecs.wsapi.broadon.com", devID, messageID, region, country, fields)
+		h.log(r, 200, "(ecs CheckDeviceStatus -> ok)")
+	default:
+		// Answer with a bare successful envelope so the Shop proceeds, and log the action to implement next.
+		h.writeSOAP(w, r, action+"Response", "urn:ecs.wsapi.broadon.com", devID, messageID, region, country, nil)
+		h.log(r, 200, "(ecs "+action+" -> stub ok)")
+	}
+}
+
 type kv struct{ k, v string }
 
 // writeSOAP writes an EC-style SOAP response: the common header fields the library parses (Version,
