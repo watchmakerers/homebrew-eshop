@@ -32,6 +32,12 @@ const (
 	PagesHost    = "tss.t.shop.nintendowifi.net"
 )
 
+// service returns the leading label of host (ias, ecs, cas, tss, ...), so the test-env hostnames
+// (ias.t.shop.nintendowifi.net etc.) are matched by service regardless of the subdomain variation.
+func service(host string) string {
+	return strings.SplitN(host, ".", 2)[0]
+}
+
 // Handler answers the DSi Shop's requests that we understand and passes the rest to Fallback (sniff's
 // logging handler, which serves canned files from its responses dir or 404s). Everything is logged.
 type Handler struct {
@@ -55,6 +61,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.nas(w, r)
 	case host == PagesHost:
 		h.pages(w, r)
+	case service(host) == "ias":
+		h.ias(w, r)
 	default:
 		h.Fallback.ServeHTTP(w, r)
 	}
