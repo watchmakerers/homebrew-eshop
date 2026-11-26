@@ -218,8 +218,41 @@ func serve(args []string) error {
 		}
 		return ca.Leaf(host)
 	}
-	run("https", &http.Server{Addr: *httpsAddr, Handler: handler("https"), TLSConfig: tlsCfg,
-		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){}}, true)
+	// The shop's browser opens with an SSLv2-format hello, which crypto/tls refuses: dsi.Listener sends
+	// those connections to its own TLS 1.0 server and the rest to crypto/tls.
+	ln, err := net.Listen("tcp", *httpsAddr)
+	if err != nil {
+		return wrap("https", err)
+	}
+	legacy := &dsi.Listener{Listener: ln, Config: tlsCfg,
+		Cert: func(remote string) (*tls.Certificate, error) {
+			host, how := last.get(remote), "last DNS lookup"
+			if host == "" {
+				host, how = dsi.PagesHost, "default"
+			}
+			if rec.FirstTime("cert:" + host + how) {
+				rec.Record(sniff.Event{Kind: "tls_cert", Message: host + " (" + how + ", legacy)"},
+					fmt.Sprintf("TLS   certificate for %s (%s, legacy)", host, how))
+			}
+			return ca.Leaf(host)
+		},
+		Log: func(remote string, info *dsi.LegacyInfo, err error) {
+			line := fmt.Sprintf("TLS   legacy %s hello from %s: version %#04x, offered %04x", info.HelloFormat, remote, info.Version, info.Offered)
+			if err != nil {
+				rec.Record(sniff.Event{Kind: "error", From: remote, Message: line + ": " + err.Error()}, "!! "+line+": "+err.Error())
+				return
+			}
+			if rec.FirstTime("legacy:" + remote + info.Cipher) {
+				rec.Record(sniff.Event{Kind: "tls_hello", From: remote, Ciphers: []string{info.Cipher}, Message: line}, line+" -> "+info.Cipher)
+			}
+		}}
+	https := &http.Server{Handler: handler("https"), ReadHeaderTimeout: 15 * time.Second, ErrorLog: log.New(rec.Writer("https"), "", 0)}
+	go func() {
+		if err := https.Serve(legacy); !errors.Is(err, http.ErrServerClosed) {
+			errc <- wrap("https", err)
+		}
+	}()
+	shutdowns = append(shutdowns, func() { https.Close() })
 
 	fmt.Printf("dsi-shop: intercepting %s -> %s\n", strings.Join(dsi.Patterns, ", "), ip)
 	fmt.Printf("On the DSi: System Settings > Internet > Connection Settings > your connection > Change Settings > DNS:\n")
