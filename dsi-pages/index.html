@@ -146,11 +146,13 @@ function runStep(i) {
     out = [name + " #" + polls + ": " + desc];
     if (log != lastLog) { out.push(log.substring(Math.max(0, log.length - 1600))); lastLog = log; }
     send(); // POST immediately, every tick
-    if (polls < 40 && (st == -4005 || st == 1 || (desc.indexOf("not busy") < 0 && desc.indexOf("threw") < 0))) { setTimeout(poll, 200); return; }
-    out = [];
+    // Keep polling only while the op is actively working (status -4005 = busy, 1 = pending). status 0 means
+    // success -> proceed to the next step; any other value is a terminal error -> report and proceed.
+    if (polls < 40 && (st == -4005 || st == 1)) { setTimeout(poll, 200); return; }
+    out = [name + (st == 0 ? " SUCCEEDED" : " ended status=" + st)];
     readFields(ec.getDeviceInfo(), ["deviceId", "isNeedRegistration", "registrationStatus", "deviceCode"], "after " + name);
     send();
-    setTimeout(function () { runStep(i + 1); }, 300);
+    setTimeout(function () { runStep(i + 1); }, 400);
   }
   setTimeout(poll, 200);
 }
