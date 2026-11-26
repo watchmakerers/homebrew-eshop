@@ -6,9 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -34,7 +38,9 @@ type Handler struct {
 	Rec      *sniff.Recorder
 	Fallback http.Handler
 	Listener string
-	Pages    http.Handler // the shop's HTML pages (tss.*); nil = placeholder page
+	// PagesDir holds the shop's HTML pages (tss.*), read on every request so they can be edited while the
+	// server runs. "/" and "/index_u" serve index.html. Missing files fall back to the placeholder page.
+	PagesDir string
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -133,14 +139,54 @@ func randHex(n int) string {
 }
 
 func (h *Handler) pages(w http.ResponseWriter, r *http.Request) {
-	if h.Pages != nil {
-		h.Pages.ServeHTTP(w, r)
-		h.log(r, 200, "(pages)")
+	// Pages post what they find out to /report (a debugging channel): log the body.
+	if r.URL.Path == "/report" {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if r.URL.RawQuery != "" {
+			if q, err := url.QueryUnescape(r.URL.RawQuery); err == nil {
+				body = append([]byte(q+"\n"), body...)
+			}
+		}
+		file, _ := h.Rec.SaveBody(body)
+		w.WriteHeader(http.StatusNoContent)
+		h.Rec.Record(sniff.Event{Kind: "report", From: r.RemoteAddr, BodyFile: file, BodyLen: len(body), Message: string(body)},
+			fmt.Sprintf("REPORT (%d B, %s)\n%s", len(body), file, indent(string(body))))
+		return
+	}
+	name := path.Clean("/" + r.URL.Path)
+	if name == "/" || name == "/index_u" {
+		name = "/index.html"
+	}
+	if h.PagesDir != "" {
+		f := filepath.Join(h.PagesDir, filepath.FromSlash(name))
+		if data, err := os.ReadFile(f); err == nil {
+			ct := mime.TypeByExtension(filepath.Ext(f))
+			if ct == "" {
+				ct = http.DetectContentType(data)
+			}
+			w.Header().Set("Content-Type", ct)
+			w.Header().Set("Cache-Control", "no-store")
+			w.Write(data)
+			h.log(r, 200, "(pages"+name+")")
+			return
+		}
+	}
+	if name != "/index.html" {
+		http.NotFound(w, r)
+		h.log(r, 404, "")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, placeholderPage, time.Now().Format("2006-01-02 15:04:05"))
 	h.log(r, 200, "(placeholder page)")
+}
+
+func indent(s string) string {
+	s = strings.TrimRight(s, "\n")
+	if len(s) > 4000 {
+		s = s[:4000] + "\n..."
+	}
+	return "      " + strings.ReplaceAll(s, "\n", "\n      ")
 }
 
 // placeholderPage proves the patched shop reached us. It also lists what the page's script can see, so the

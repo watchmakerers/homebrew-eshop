@@ -126,6 +126,7 @@ func serve(args []string) error {
 		caDir     = fs.String("ca", "sniff-data/dsi", "the CA made by `dsi-shop patch`")
 		logDir    = fs.String("logdir", "sniff-data/dsi/log", "where events.jsonl and request bodies go")
 		responses = fs.String("responses", "sniff-data/dsi/responses", "canned replies: <dir>/<host>/<path>")
+		pages     = fs.String("pages", "dsi-pages", "the shop's HTML pages (edited live; index.html is the start page)")
 	)
 	fs.Parse(args)
 
@@ -179,7 +180,7 @@ func serve(args []string) error {
 	}
 
 	handler := func(listener string) http.Handler {
-		return &dsi.Handler{Rec: rec, Listener: listener,
+		return &dsi.Handler{Rec: rec, Listener: listener, PagesDir: *pages,
 			Fallback: &sniff.Handler{Rec: rec, Responses: *responses, Listener: listener}}
 	}
 	run := func(name string, srv *http.Server, tlsOn bool) {
